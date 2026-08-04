@@ -1,0 +1,62 @@
+name: HelpOnTheWay
+options:
+  bundleIdPrefix: com.hanelliotphan
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "17.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGNING_ALLOWED: NO
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+    INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: Used to drop your request at the right address and show how far away your helper is.
+    INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Attach photos so a helper knows what the job involves before they accept it.
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    # `@testable import` needs the app module built with testing enabled.
+    Debug:
+      ENABLE_TESTABILITY: YES
+
+targets:
+  HelpOnTheWay:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hanelliotphan.helpontheway
+        PRODUCT_NAME: HelpOnTheWay
+        INFOPLIST_KEY_CFBundleDisplayName: Help on the Way
+
+  # Logic-only tests — pricing, the dispatch timeline, matching and scheduling
+  # rules all live in plain structs so they can be checked without a simulator UI.
+  HelpOnTheWayTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: HelpOnTheWay
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hanelliotphan.helpontheway.tests
+
+schemes:
+  HelpOnTheWay:
+    build:
+      targets:
+        HelpOnTheWay: all
+        HelpOnTheWayTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - HelpOnTheWayTests

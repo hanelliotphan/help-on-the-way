@@ -1,0 +1,139 @@
+import SwiftUI
+
+/// The five-step request. One screen, one step at a time, with the running
+/// price pinned to the bottom so the cost of a longer job or an instant
+/// dispatch is never a surprise at the end.
+struct RequestFlowView: View {
+    @Environment(AppSession.self) private var session
+    @Bindable var draft: RequestDraft
+
+    @State private var showingCancelConfirm = false
+
+    private var demand: DemandIndex {
+        session.demand(for: draft.category, at: (draft.address ?? session.homeAddress).point)
+    }
+
+    private var quote: Quote {
+        draft.quote(demand: demand, now: session.now)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // The step question reads as a heading here rather than
+                        // in the navigation bar, where the progress dots live.
+                        Text(draft.step.title)
+                            .font(.title2.weight(.bold))
+
+                        switch draft.step {
+                        case .category:
+                            CategoryStep(draft: draft)
+                        case .details:
+                            DetailsStep(draft: draft)
+                        case .location:
+                            LocationStep(draft: draft)
+                        case .timing:
+                            TimingStep(draft: draft, demand: demand)
+                        case .review:
+                            ReviewStep(draft: draft, quote: quote, demand: demand)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                    .padding(.bottom, 24)
+                }
+                .background(Palette.canvas)
+
+                footer
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        if draft.step == .category {
+                            showingCancelConfirm = true
+                        } else {
+                            withAnimation(.snappy) { draft.retreat() }
+                        }
+                    } label: {
+                        Image(systemName: draft.step == .category ? "xmark" : "chevron.left")
+                            .font(.headline)
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 3) {
+                        Text("\(draft.step.rawValue + 1) of \(RequestDraft.Step.allCases.count) · \(draft.step.shortTitle)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        StepDots(count: RequestDraft.Step.allCases.count, index: draft.step.rawValue)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") { showingCancelConfirm = true }
+                        .font(.subheadline)
+                }
+            }
+            .confirmationDialog("Discard this request?", isPresented: $showingCancelConfirm, titleVisibility: .visible) {
+                Button("Discard", role: .destructive) { session.draft = nil }
+                Button("Keep editing", role: .cancel) {}
+            }
+        }
+    }
+
+    // MARK: Footer
+
+    private var footer: some View {
+        VStack(spacing: 10) {
+            if draft.step != .category {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(draft.step == .review ? "Total" : "Estimate")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(quote.total.currency)
+                            .font(.title3.weight(.bold))
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        TimingChip(timing: draft.timing, now: session.now)
+                        Text("\(Format.duration(minutes: quote.minutes)) · \(Format.rate(draft.hourlyRate))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if let issue = draft.schedulingIssue(now: session.now), draft.step == .timing || draft.step == .review {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                    Text(issue.message)
+                        .font(.caption)
+                    Spacer()
+                }
+                .foregroundStyle(Palette.danger)
+            }
+
+            BigButton(
+                title: buttonTitle,
+                symbol: draft.isLastStep ? (draft.wantsInstant ? "bolt.fill" : "calendar.badge.checkmark") : "arrow.right",
+                tint: draft.isLastStep ? Palette.tint(for: draft.timing) : Palette.accent,
+                isEnabled: draft.canAdvance(now: session.now)
+            ) {
+                if draft.isLastStep {
+                    session.submit(draft)
+                } else {
+                    withAnimation(.snappy) { draft.advance() }
+                }
+            }
+        }
+        .padding(16)
+        .background(.bar)
+    }
+
+    private var buttonTitle: String {
+        guard draft.isLastStep else { return "Continue" }
+        return draft.wantsInstant ? "Find a helper now" : "Confirm booking"
+    }
+}
