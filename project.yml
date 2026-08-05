@@ -9,7 +9,12 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     TARGETED_DEVICE_FAMILY: "1"
-    CODE_SIGNING_ALLOWED: NO
+    # The two apps share a job store through an App Group, and the simulator
+    # only honours that entitlement if the binary is actually signed. Ad-hoc is
+    # enough here — no provisioning profile, no developer account.
+    CODE_SIGNING_ALLOWED: YES
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_KEY_UILaunchScreen_Generation: YES
     INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
@@ -28,12 +33,40 @@ targets:
     type: application
     platform: iOS
     sources:
-      - Sources
+      - Sources/Shared
+      - Sources/CustomerApp
+    entitlements:
+      path: Resources/HelpOnTheWay.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.hanelliotphan.helpontheway
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.hanelliotphan.helpontheway
         PRODUCT_NAME: HelpOnTheWay
         INFOPLIST_KEY_CFBundleDisplayName: Help on the Way
+
+  # What helpers install. Shares every model and rule in Sources/Shared, and is
+  # the only target that compiles Sources/HelperApp. Same App Group as the
+  # customer app — that shared container is the whole link between them.
+  HelpOnTheWayHelper:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/Shared
+      - Sources/HelperApp
+    entitlements:
+      path: Resources/HelpOnTheWayHelper.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.hanelliotphan.helpontheway
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hanelliotphan.helpontheway.helper
+        PRODUCT_NAME: HelpOnTheWayHelper
+        # Home screen labels truncate once they run long, so the helper app gets
+        # a short suffix rather than "Help on the Way for Helpers".
+        INFOPLIST_KEY_CFBundleDisplayName: HOTW Helper
 
   # Logic-only tests — pricing, the dispatch timeline, matching and scheduling
   # rules all live in plain structs so they can be checked without a simulator UI.
@@ -60,3 +93,10 @@ schemes:
       config: Debug
       targets:
         - HelpOnTheWayTests
+
+  HelpOnTheWayHelper:
+    build:
+      targets:
+        HelpOnTheWayHelper: all
+    run:
+      config: Debug

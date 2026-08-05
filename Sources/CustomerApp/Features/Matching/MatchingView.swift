@@ -93,16 +93,40 @@ struct MatchingView: View {
 
     private var headline: some View {
         VStack(spacing: 7) {
-            Text(progress.failed ? "Nobody's free right now" : "Asking \(max(progress.pinged, 1)) helpers nearby")
+            Text(headlineTitle)
                 .font(.title2.weight(.bold))
                 .multilineTextAlignment(.center)
-            Text(progress.failed
-                 ? "Every \(job?.category.title.lowercased() ?? "") helper near you is mid-job. Booking a time gets you the same people at a lower rate."
-                 : "They see your notes, your address and what it pays. First one to take it is yours.")
+            Text(headlineDetail)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            if progress.awaitingLiveHelpers > 0 {
+                Chip(text: "Live helper on shift", symbol: "person.wave.2.fill", tint: Palette.success)
+                    .padding(.top, 2)
+            }
         }
+    }
+
+    private var headlineTitle: String {
+        if progress.failed { return "Nobody's free right now" }
+        if progress.awaitingLiveHelpers > 0 {
+            return progress.awaitingLiveHelpers == 1
+                ? "A helper is looking at this"
+                : "\(progress.awaitingLiveHelpers) helpers are looking at this"
+        }
+        return "Asking \(max(progress.pinged, 1)) helpers nearby"
+    }
+
+    private var headlineDetail: String {
+        if progress.failed {
+            return "Every \(job?.category.title.lowercased() ?? "") helper near you is mid-job. Booking a time gets you the same people at a lower rate."
+        }
+        if progress.awaitingLiveHelpers > 0 {
+            // Somebody is genuinely running the helper app, so the simulated
+            // dispatcher has stood down and we're waiting on a real thumb.
+            return "Somebody on shift has your request open in their app right now. Nothing is auto-assigned while they decide."
+        }
+        return "They see your notes, your address and what it pays. First one to take it is yours."
     }
 
     // MARK: Who was asked

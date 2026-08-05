@@ -18,6 +18,11 @@ enum Palette {
     static let danger = Color(red: 0.81, green: 0.22, blue: 0.22)
     static let dangerSoft = Color(red: 0.81, green: 0.22, blue: 0.22).opacity(0.13)
 
+    /// The helper app runs on its own accent, so one glance at a screenshot
+    /// tells you which of the two apps you're looking at.
+    static let helper = Color(red: 0.07, green: 0.44, blue: 0.37)
+    static let helperSoft = Color(red: 0.07, green: 0.44, blue: 0.37).opacity(0.13)
+
     static let card = Color(uiColor: .secondarySystemGroupedBackground)
     static let canvas = Color(uiColor: .systemGroupedBackground)
     static let hairline = Color(uiColor: .separator).opacity(0.6)

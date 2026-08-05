@@ -179,6 +179,37 @@ struct DispatchPlan: Codable, Hashable, Sendable {
     }
 }
 
+/// What the helper app does to a job in flight.
+///
+/// The helper never sets `status` directly. Instead each action reshapes the
+/// plan's boundaries so that `status(at: now)` *derives* the new phase — tapping
+/// "I'm here" shortens `travelMinutes` until `arrivesAt` is now. The plan stays
+/// the single source of truth, both apps keep deriving the same phase from it
+/// with no coordination, and a job whose window elapsed while an app was closed
+/// still resolves correctly.
+extension DispatchPlan {
+
+    mutating func markEnRoute(at now: Date) {
+        acceptedAt = now.addingTimeInterval(-confirmMinutes * timeScale)
+    }
+
+    /// Arriving early cuts the drive short; arriving late stretches it.
+    mutating func markArrived(at now: Date) {
+        let elapsed = now.timeIntervalSince(enRouteStartsAt) / timeScale
+        travelMinutes = max(0, Int(elapsed.rounded()))
+    }
+
+    mutating func markWorkStarted(at now: Date) {
+        greetMinutes = max(0, now.timeIntervalSince(arrivesAt) / timeScale)
+    }
+
+    /// Completion is what sets the billed duration — the job took as long as it
+    /// took, and `Pricing.settle` charges for that.
+    mutating func markCompleted(at now: Date) {
+        jobMinutes = max(1, Int((now.timeIntervalSince(startsWorkAt) / timeScale).rounded()))
+    }
+}
+
 enum Dispatch {
     /// The demo timeline. One simulated minute every two seconds means a
     /// two-hour clean plays out in about four minutes of watching.

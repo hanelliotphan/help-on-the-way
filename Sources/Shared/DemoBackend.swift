@@ -17,6 +17,9 @@ enum MatchingUpdate: Sendable {
     case broadcasting(count: Int)
     /// Somebody passed — usually because they're finishing another job.
     case declined(Helper)
+    /// A real helper app is online and looking at this offer, so the simulation
+    /// stands down and waits for a person to tap Accept.
+    case awaitingLiveHelper(count: Int)
     case accepted(Helper)
     case failed
 }
@@ -72,7 +75,7 @@ final class DemoBackend {
     /// Runs an instant request out to the neighbourhood. Which helpers pass and
     /// who ends up taking it is seeded off the job id, so re-running a job
     /// replays the same story.
-    func match(job: Job, favorites: Set<UUID>) -> AsyncStream<MatchingUpdate> {
+    func match(job: Job, favorites: Set<UUID>, liveHelperCount: Int = 0) -> AsyncStream<MatchingUpdate> {
         let category = job.category
         let point = job.address.point
         let preferred = job.helperWasChosen ? job.helper : nil
@@ -90,6 +93,17 @@ final class DemoBackend {
                 guard !blocked, !ranked.isEmpty else {
                     await pause(2.4)
                     continuation.yield(.failed)
+                    continuation.finish()
+                    return
+                }
+
+                // Somebody is actually running the helper app. Broadcast, then
+                // get out of the way — a simulated accept would steal the job
+                // out from under a real person about to tap the button.
+                if liveHelperCount > 0 {
+                    continuation.yield(.broadcasting(count: max(ranked.count, liveHelperCount)))
+                    await pause(1.2)
+                    continuation.yield(.awaitingLiveHelper(count: liveHelperCount))
                     continuation.finish()
                     return
                 }

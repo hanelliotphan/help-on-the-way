@@ -1,16 +1,27 @@
 # Help on the Way
 
-An iOS app for booking someone to come and do a thing. Cleaning, repairs, moving,
-assembly, errands, yard work, tech help, pets, events — either **right now**, or
-**on your calendar**.
+**Two iOS apps** for booking someone to come and do a thing — cleaning, repairs,
+moving, assembly, errands, yard work, tech help, pets, events — either **right
+now** or **on your calendar**.
 
-Two products in one app. *Now* works like Uber: the request goes out to every
-qualified helper nearby at once, the first to take it is yours, and you watch
-them drive to your door. *Later* works like TaskRabbit: pick a day, pick a slot,
-and pick the exact person, by rate and reviews and rebook rate.
+| | |
+|---|---|
+| **Help on the Way** | What customers install. Ask for help, watch it arrive, pay and rate. |
+| **HOTW Helper** | What helpers install. Go online, accept offers, work the job, get paid. |
 
-Everything runs on-device against a mock dispatcher. No account, no server, no
-network calls, no card fields.
+The customer app is two products in one. *Now* works like Uber: the request goes
+out to every qualified helper nearby at once, the first to take it is yours, and
+you watch them drive to your door. *Later* works like TaskRabbit: pick a day,
+pick a slot, and pick the exact person, by rate and reviews and rebook rate.
+
+The two apps are **genuinely linked**. Both read and write one job store in a
+shared App Group container, so a request placed in the customer app appears as a
+live offer in the helper app within a second, and an accept there flips the
+customer's screen to live tracking. When a real helper is on shift, the simulated
+dispatcher stands down and waits for a person to tap Accept.
+
+Everything runs on-device. No account, no server, no network calls, no card
+fields.
 
 |  |  |  |
 |---|---|---|
@@ -18,6 +29,13 @@ network calls, no card fields.
 | Now or Later, with live demand | An itemised quote before you commit | The request out to the neighbourhood |
 | ![Live tracking](docs/08-tracking.png) | ![Scheduling](docs/04-schedule-later.png) | ![Browse helpers](docs/05-browse-helpers.png) |
 | Route, ETA and status, live | Real slots against real working hours | Compare the actual people |
+
+And the helper side:
+
+| | | |
+|---|---|---|
+| ![Drive](docs/10-helper-drive.png) | ![Earnings](docs/11-helper-earnings.png) | ![Account](docs/12-helper-account.png) |
+| On shift, offers land here | What you keep, and what the platform took | Your profile, checks, and the live link |
 
 ---
 
@@ -82,6 +100,58 @@ early, or reset everything.
 
 ---
 
+## The helper app
+
+Sign in as any of the twelve roster helpers — there's no auth, so "signing in" is
+picking which of them you are, which is also what makes the two-app demo work:
+you can be the person the customer app just dispatched to.
+
+**Drive** — one big GO button, then offers. Each offer card leads with what the
+job pays *you* (labour plus the busy-area premium, before tips), then distance,
+drive time and time on site, then the job itself with the customer's notes and
+photos. Accept or Pass.
+
+**Working a job** — one primary action that walks the whole state machine: *Start
+driving → I've arrived → Start work → Complete job*. Alongside it: the route, a
+Directions hand-off to Apple Maps, the access notes, the category checklist, and
+a chat thread that's the mirror of the customer's.
+
+**Earnings** — today / this week / all time, with the split shown honestly:
+labour, busy-area premium and tips are the helper's; the service fee and the
+instant dispatch fee are the platform's; tax belongs to neither and is passed
+through. Effective hourly is computed across the period, because that's the
+number a helper actually judges a platform by.
+
+**Schedule** — bookings a customer assigned to you by name, with the window and
+the pay.
+
+### How the two apps talk
+
+One JSON document in `group.com.hanelliotphan.helpontheway`, with three rules:
+
+1. **Every write is a read-modify-write.** Nothing writes a snapshot it loaded a
+   while ago — that's how you erase the other app's work. `SharedStore.mutate`
+   reloads, applies, saves.
+2. **A `revision` counter drives sync.** Each app remembers the last revision it
+   wrote or read and reloads when the file moves past it. Presence heartbeats
+   deliberately *don't* bump it, or both apps would reload the whole job list
+   once a second for nothing.
+3. **Helper actions reshape the plan, they don't set status.** Tapping "I'm here"
+   shortens `travelMinutes` until `arrivesAt` is now. Because status is derived
+   from the plan, both apps compute the identical phase with zero coordination.
+
+When a helper is on shift, `DemoBackend` yields `.awaitingLiveHelper` and stops —
+no simulated accept steals the job from a real person. If nobody taps Accept
+within 45 seconds, the customer app falls back to the simulated dispatcher rather
+than leaving the request hanging.
+
+**Known limitation:** two writes landing in the same instant can still lose one.
+There's no file lock, because a pair of apps driven by one person's thumbs never
+actually races, and the locking would buy correctness nobody in this demo can
+observe.
+
+---
+
 ## How it's built
 
 SwiftUI, iOS 17+, no third-party dependencies. `@Observable` throughout, with a
@@ -90,15 +160,22 @@ nothing else mutates a job.
 
 ```
 Sources/
-  App/          HelpOnTheWayApp, RootView (tabs + one route for covers), AppSession
-  Core/         Models, Pricing, Dispatch, Matching, Scheduling,
-                DemoBackend, MockData, Persistence, PhotoStore, Theme, Components
-  Features/     Onboarding, Home, Request, Matching, Tracking,
-                Activity, Rating, Chat, Helpers, Profile
-Tests/          Pricing, Dispatch, Scheduling, Matching, RequestDraft, Persistence
+  Shared/       Compiled into BOTH apps — every model and every rule.
+                Models, Pricing, Dispatch, Matching, Scheduling, Earnings,
+                SharedStore, DemoBackend, MockData, Persistence, PhotoStore,
+                Theme, Components
+  CustomerApp/  HelpOnTheWayApp, RootView, AppSession + Features/
+                (Onboarding, Home, Request, Matching, Tracking, Activity,
+                 Rating, Chat, Helpers, Profile)
+  HelperApp/    HelperAppMain, HelperSession, DriveView, ActiveJobView,
+                EarningsView
+Tests/          Pricing, Dispatch, Scheduling, Matching, RequestDraft,
+                Persistence, HelperActions, Payouts, Presence
 ```
 
-Roughly 7,400 lines of app and 1,250 of tests across 35 files.
+Roughly 9,400 lines of app and 1,600 of tests across 40 files. All the helper's
+*logic* lives in `Shared` rather than `HelperApp` — that's what lets one test
+target cover both apps without a second `@testable import`.
 
 ### The one idea worth knowing
 
@@ -158,9 +235,25 @@ Or straight to a simulator:
 xcodebuild -project HelpOnTheWay.xcodeproj -scheme HelpOnTheWay -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
+Both apps, installed side by side on one simulator:
+
+```bash
+for S in HelpOnTheWay HelpOnTheWayHelper; do xcodebuild -project HelpOnTheWay.xcodeproj -scheme "$S" -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build; done
+```
+
+To see the pair work: open **HOTW Helper**, sign in as Terrence B., tap **Go
+online**. Switch to **Help on the Way**, tap Handyman, book it. The matching
+screen says *"A helper is looking at this"* instead of auto-assigning. Switch back
+to the helper app — the offer is there. Accept it, switch back, and the customer
+app is on live tracking.
+
+Note the apps are ad-hoc signed (`CODE_SIGN_IDENTITY: "-"`) rather than unsigned:
+the simulator only honours the App Group entitlement on a signed binary, and
+without it the two apps can't see each other.
+
 ## Tests
 
-121 tests in 10 suites, written with Swift Testing. All logic-only — no UI tests,
+146 tests in 13 suites, written with Swift Testing. All logic-only — no UI tests,
 no waiting.
 
 ```bash
@@ -180,11 +273,28 @@ What they cover:
 | Fixtures | That the seeded roster and history are internally consistent |
 | Request draft | Category switches resetting duration and dropping incompatible helpers, slots sliding when a job gets longer, promo handling, the step machine |
 | Persistence | Round-tripping the snapshot, both timing cases, and an in-flight dispatch plan |
+| Helper actions | Each plan mutator lands its phase on "now", arriving early or late, and that every earlier moment still derives the phase it was in |
+| Payouts | The helper/platform split, that tax is neither side's income, overtime, effective hourly |
+| Presence | On and off shift, category matching, and that presence survives suspension |
 
-One of these caught a real bug: the two-week booking horizon was measured as
-"this time of day, fourteen days out", which silently trimmed every slot past the
-current hour on the last day of the picker. Fixed in
-[Scheduling.swift](Sources/Core/Scheduling.swift).
+### Bugs these caught
+
+**The booking horizon** was measured as "this time of day, fourteen days out",
+which silently trimmed every slot past the current hour on the picker's last day.
+Fixed in [Scheduling.swift](Sources/Shared/Scheduling.swift).
+
+**Presence was a heartbeat with a 12-second window** — wrong for the worst
+possible reason. Both apps live on one device, so the helper app is suspended the
+instant you switch to the customer app to place a request; its heartbeat always
+went stale and every request auto-matched before a person could accept. Presence
+is now a latch that survives backgrounding, with the customer app's bounded wait
+as the safety valve. Regression test: *"Presence survives the app being suspended
+for a long time."*
+
+**The customer app never left the matching screen** when a real helper accepted.
+The trigger asked "did this job become live?" — but `.searching` is *already* a
+live status, so the test could never fire for the one case that mattered. It now
+compares before/after status per job.
 
 ---
 
@@ -192,8 +302,8 @@ current hour on the last day of the picker. Fixed in
 
 - **No real payments.** Cards are brand-and-last-four fixtures. There is no field
   anywhere in the app that accepts a card number, and adding one is out of scope.
-- **No helper-side app.** This is the customer app. A helper accepting a job is
-  simulated by `DemoBackend`.
+- **No real dispatch network.** With no helper app on shift, `DemoBackend`
+  simulates who declines and who accepts. With one online, the offer is real.
 - **No geocoder.** New addresses drop a pin near the demo neighbourhood and let
   you nudge it. Everything downstream of a coordinate works properly.
 - **No real routing.** Routes are synthetic polylines rather than `MKDirections`,

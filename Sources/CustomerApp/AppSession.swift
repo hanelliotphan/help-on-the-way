@@ -10,6 +10,11 @@ struct MatchingProgress: Hashable {
     var pinged: Int = 0
     var declined: [Helper] = []
     var failed: Bool = false
+    /// Non-zero once the simulation has stood down for a real helper app.
+    var awaitingLiveHelpers: Int = 0
+    /// When we started waiting on a person. Bounded, so a helper app that was
+    /// force-quit while on shift can't leave a request hanging forever.
+    var awaitingSince: Date?
     var startedAt: Date = Date()
 }
 
@@ -52,6 +57,10 @@ final class AppSession {
 
     // MARK: Lifecycle
 
+    /// Last revision of the shared document this app wrote or read. Anything
+    /// higher on disk is the helper app's work, and gets adopted on the next tick.
+    private var lastRevision = 0
+
     init(backend: DemoBackend? = nil, snapshot: StoreSnapshot? = Persistence.load()) {
         self.backend = backend ?? DemoBackend()
         if let snapshot {
@@ -61,6 +70,7 @@ final class AppSession {
             paymentMethods = snapshot.paymentMethods
             jobs = snapshot.jobs
             timeScale = snapshot.timeScale
+            lastRevision = snapshot.revision
         } else {
             hasOnboarded = false
             profile = MockData.profile
@@ -211,10 +221,16 @@ final class AppSession {
         return job
     }
 
+    /// How long a request waits on a real person before the simulation takes
+    /// over. Long enough to switch apps and tap Accept; short enough that a
+    /// helper app that never comes back doesn't strand the request.
+    static let liveHelperGrace: TimeInterval = 45
+
     /// Consumes the dispatcher's stream for an instant request.
-    func runMatching(for jobID: UUID) async {
+    func runMatching(for jobID: UUID, forceSimulated: Bool = false) async {
         guard let job = job(jobID) else { return }
-        for await update in backend.match(job: job, favorites: profile.favoriteHelperIDs) {
+        let live = forceSimulated ? 0 : liveHelperCount(for: job.category)
+        for await update in backend.match(job: job, favorites: profile.favoriteHelperIDs, liveHelperCount: live) {
             guard let index = index(of: jobID) else { return }
             // A cancel while we were waiting wins over anything the stream says.
             guard jobs[index].status == .searching else { return }
@@ -224,6 +240,12 @@ final class AppSession {
                 matching[jobID, default: MatchingProgress()].pinged = count
             case .declined(let helper):
                 matching[jobID, default: MatchingProgress()].declined.append(helper)
+            case .awaitingLiveHelper(let count):
+                // The job stays `.searching` on purpose. It gets picked up when
+                // the helper app writes an accept into the shared store, which
+                // `adoptExternalChanges()` notices on the next tick.
+                matching[jobID, default: MatchingProgress()].awaitingLiveHelpers = count
+                matching[jobID]?.awaitingSince = Date()
             case .accepted(let helper):
                 accept(helper: helper, forJobAt: index)
             case .failed:
@@ -392,6 +414,10 @@ final class AppSession {
     /// was killed picks up exactly where it should.
     func tick() {
         now = Date()
+        // Adopt the helper app's work before deriving anything from it, so an
+        // accept that landed a moment ago is already in hand this pass.
+        adoptExternalChanges()
+        escalateStaleSearches()
         var changed = false
 
         for index in jobs.indices {
@@ -487,26 +513,90 @@ final class AppSession {
 
     // MARK: Persistence
 
-    var snapshot: StoreSnapshot {
-        StoreSnapshot(
-            hasOnboarded: hasOnboarded,
-            profile: profile,
-            addresses: addresses,
-            paymentMethods: paymentMethods,
-            jobs: jobs,
-            timeScale: timeScale
-        )
+    /// Pulls in anything the helper app has written since our last read — an
+    /// accepted job, a status the helper advanced, a completion.
+    private func adoptExternalChanges() {
+        guard let disk = Persistence.load(), disk.revision != lastRevision else { return }
+        lastRevision = disk.revision
+
+        // Compare statuses before and after rather than asking "did this become
+        // live" — `.searching` is already a live status, so that test could never
+        // fire for the one case that matters, a request being accepted.
+        let before = Dictionary(jobs.map { ($0.id, $0.status) }, uniquingKeysWith: { first, _ in first })
+        jobs = disk.jobs
+        profile = disk.profile
+        addresses = disk.addresses
+        paymentMethods = disk.paymentMethods
+
+        for job in jobs where before[job.id] != job.status {
+            // The request we were watching just got taken by a real helper.
+            if matchingJobID == job.id, job.status != .searching {
+                matchingJobID = nil
+                matching[job.id] = nil
+                if job.status.isLive {
+                    trackingJobID = job.id
+                    toast = "\(job.helper?.displayName ?? "A helper") accepted."
+                }
+            }
+            // The helper finished it from their side.
+            if job.status == .completed, job.rating == nil {
+                if trackingJobID == job.id { trackingJobID = nil }
+                if ratingJobID == nil, draft == nil { ratingJobID = job.id }
+            }
+        }
+    }
+
+    /// A request left waiting on a real helper who never tapped Accept falls back
+    /// to the simulated dispatcher rather than sitting there indefinitely.
+    private func escalateStaleSearches() {
+        for job in jobs where job.status == .searching {
+            guard let progress = matching[job.id],
+                  progress.awaitingLiveHelpers > 0,
+                  let since = progress.awaitingSince,
+                  now.timeIntervalSince(since) > Self.liveHelperGrace
+            else { continue }
+
+            matching[job.id]?.awaitingLiveHelpers = 0
+            matching[job.id]?.awaitingSince = nil
+            let id = job.id
+            Task { await runMatching(for: id, forceSimulated: true) }
+        }
+    }
+
+    /// How many real helper apps are online and could take this category.
+    func liveHelperCount(for category: HelpCategory) -> Int {
+        guard let disk = Persistence.load() else { return 0 }
+        let online = disk.onlineHelperIDs(now: now)
+        return backend.roster.filter { online.contains($0.id) && $0.handles(category) }.count
     }
 
     /// Debounced — the ticker touches state every second and none of that is
     /// worth a disk write on its own.
+    ///
+    /// Writes are a merge rather than a wholesale overwrite: the helper app owns
+    /// `helperHeartbeats`, and stamping our copy over the file would knock every
+    /// online helper offline once a second.
     private func scheduleSave() {
         saveTask?.cancel()
-        let pending = snapshot
-        saveTask = Task {
+        let hasOnboarded = hasOnboarded
+        let profile = profile
+        let addresses = addresses
+        let paymentMethods = paymentMethods
+        let jobs = jobs
+        let timeScale = timeScale
+
+        saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled else { return }
-            Persistence.save(pending)
+            let written = SharedStore.mutate { disk in
+                disk.hasOnboarded = hasOnboarded
+                disk.profile = profile
+                disk.addresses = addresses
+                disk.paymentMethods = paymentMethods
+                disk.jobs = jobs
+                disk.timeScale = timeScale
+            }
+            self?.lastRevision = written.revision
         }
     }
 }
