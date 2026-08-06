@@ -368,6 +368,7 @@ struct TimingStep: View {
     let demand: DemandIndex
 
     @State private var day: Date = Calendar.current.startOfDay(for: Date())
+    @State private var part: Scheduling.DayPart = .morning
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -382,6 +383,14 @@ struct TimingStep: View {
         }
         .onAppear {
             day = Calendar.current.startOfDay(for: draft.scheduledStart)
+            part = Scheduling.DayPart.containing(draft.scheduledStart)
+        }
+        .onChange(of: draft.minutes) { _, _ in
+            // A longer job can empty the part that's on screen; slide to one
+            // that still fits rather than showing an empty grid.
+            if partSlots.isEmpty, let fallback = firstAvailablePart(on: day) {
+                withAnimation(.snappy) { select(part: fallback) }
+            }
         }
     }
 
@@ -486,81 +495,148 @@ struct TimingStep: View {
         Scheduling.slots(on: day, minutes: draft.billableMinutes, now: session.now)
     }
 
+    private var availability: [Scheduling.DayPart: Int] {
+        Scheduling.availability(on: day, minutes: draft.billableMinutes, now: session.now)
+    }
+
+    private var partSlots: [Date] {
+        Scheduling.slots(on: day, minutes: draft.billableMinutes, now: session.now, in: part)
+    }
+
     private var scheduledPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 9) {
-                    ForEach(days, id: \.self) { candidate in
-                        let selected = Calendar.current.isDate(candidate, inSameDayAs: day)
-                        Button {
-                            withAnimation(.snappy) {
-                                day = candidate
-                                if let first = Scheduling.slots(on: candidate, minutes: draft.billableMinutes, now: session.now).first {
-                                    draft.scheduledStart = first
-                                }
-                            }
-                        } label: {
-                            VStack(spacing: 2) {
-                                Text(candidate.formatted(.dateTime.weekday(.abbreviated)))
-                                    .font(.caption2.weight(.semibold))
-                                Text(candidate.formatted(.dateTime.day()))
-                                    .font(.headline)
-                            }
-                            .frame(width: 52, height: 58)
-                            .foregroundStyle(selected ? .white : .primary)
-                            .background(
-                                selected ? Palette.planned : Palette.card,
-                                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
+            dayRail
 
             Card(spacing: 11) {
-                Text("\(Format.day(day, now: session.now)) · \(slots.count) slots open")
-                    .font(.subheadline.weight(.semibold))
-                if slots.isEmpty {
-                    Text("Nothing left that fits a \(Format.duration(minutes: draft.billableMinutes)) job. Try another day.")
+                partPicker
+
+                if partSlots.isEmpty {
+                    Text(slots.isEmpty
+                         ? "Nothing left on \(Format.day(day, now: session.now).lowercased()) that fits a \(Format.duration(minutes: draft.billableMinutes)) job."
+                         : "No \(part.title.lowercased()) slots left. Try another part of the day.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                    LazyVGrid(columns: Array(repeating: GridItem(spacing: 8), count: 3), spacing: 8) {
-                        ForEach(slots, id: \.self) { slot in
+                    // Four across keeps a part of day to two or three rows.
+                    LazyVGrid(columns: Array(repeating: GridItem(spacing: 7), count: 4), spacing: 7) {
+                        ForEach(partSlots, id: \.self) { slot in
                             let selected = slot == draft.scheduledStart
                             Button {
                                 draft.scheduledStart = slot
                             } label: {
-                                Text(Format.time(slot))
-                                    .font(.subheadline.weight(.semibold))
+                                Text(Format.shortTime(slot))
+                                    .font(.footnote.weight(.semibold))
+                                    .minimumScaleFactor(0.8)
+                                    .lineLimit(1)
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 38)
+                                    .frame(height: 36)
                                     .foregroundStyle(selected ? .white : Palette.planned)
                                     .background(
                                         selected ? Palette.planned : Palette.plannedSoft,
-                                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     )
                             }
                             .buttonStyle(.plain)
                         }
                     }
+
                     Divider()
-                    LabeledRow(
-                        label: "Your window",
-                        value: Format.window(draft.scheduledStart, minutes: draft.billableMinutes),
-                        symbol: "clock", tint: Palette.planned
-                    )
-                    if draft.scheduledStart.timeIntervalSince(session.now) >= Pricing.plannedDiscountLead {
-                        LabeledRow(
-                            label: "Planned-ahead credit",
-                            value: "5% off labour",
-                            symbol: "tag.fill", tint: Palette.success
-                        )
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.caption)
+                            .foregroundStyle(Palette.planned)
+                        Text(Format.window(draft.scheduledStart, minutes: draft.billableMinutes))
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 6)
+                        if draft.scheduledStart.timeIntervalSince(session.now) >= Pricing.plannedDiscountLead {
+                            Chip(text: "5% off labour", symbol: "tag.fill", tint: Palette.success)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private var dayRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(days, id: \.self) { candidate in
+                    let selected = Calendar.current.isDate(candidate, inSameDayAs: day)
+                    Button {
+                        withAnimation(.snappy) { select(day: candidate) }
+                    } label: {
+                        VStack(spacing: 1) {
+                            Text(candidate.formatted(.dateTime.weekday(.abbreviated)))
+                                .font(.caption2.weight(.semibold))
+                                .opacity(0.8)
+                            Text(candidate.formatted(.dateTime.day()))
+                                .font(.subheadline.weight(.bold))
+                        }
+                        .frame(width: 46, height: 48)
+                        .foregroundStyle(selected ? .white : .primary)
+                        .background(
+                            selected ? Palette.planned : Palette.card,
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var partPicker: some View {
+        HStack(spacing: 7) {
+            ForEach(Scheduling.DayPart.allCases) { candidate in
+                let count = availability[candidate] ?? 0
+                let selected = candidate == part
+                Button {
+                    withAnimation(.snappy) { select(part: candidate) }
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: candidate.symbol)
+                            .font(.caption)
+                        Text(candidate.title)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .foregroundStyle(selected ? .white : (count == 0 ? .secondary : Palette.planned))
+                    .background(
+                        selected ? Palette.planned : (count == 0 ? Color.secondary.opacity(0.1) : Palette.plannedSoft),
+                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(count == 0)
+            }
+        }
+    }
+
+    // MARK: Keeping day, part and slot in step
+
+    private func select(day newDay: Date) {
+        day = newDay
+        guard let firstPart = firstAvailablePart(on: newDay) else { return }
+        select(part: firstPart)
+    }
+
+    private func select(part newPart: Scheduling.DayPart) {
+        part = newPart
+        // The selection always has to live inside the part on screen, or the
+        // footer would price a slot the customer can no longer see.
+        if let first = Scheduling.slots(on: day, minutes: draft.billableMinutes, now: session.now, in: newPart).first,
+           !newPart.contains(draft.scheduledStart) || !Calendar.current.isDate(draft.scheduledStart, inSameDayAs: day) {
+            draft.scheduledStart = first
+        }
+    }
+
+    private func firstAvailablePart(on someDay: Date) -> Scheduling.DayPart? {
+        let counts = Scheduling.availability(on: someDay, minutes: draft.billableMinutes, now: session.now)
+        return Scheduling.DayPart.allCases.first { (counts[$0] ?? 0) > 0 }
     }
 
     private var helperPicker: some View {

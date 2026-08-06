@@ -62,10 +62,15 @@ roll the same request into a scheduled booking at the lower rate.
 2. Slots are real: an hour's notice minimum, a 7am–8pm start window, work must
    finish by 10pm, and a job long enough to run past closing simply isn't
    offered that late.
-3. Pick your own helper — filter by category, sort by recommended, rating, rate
+3. Times are grouped **morning / afternoon / evening** rather than listed. A
+   trading day is 27 half-hour starts, and showing them all made the step a wall
+   of identical buttons; people think "some afternoon" before they think "3:30".
+   Each segment carries its own count and greys out when it's full, and because a
+   part of day settles AM or PM, the buttons drop the meridiem and read `1:00`.
+4. Pick your own helper — filter by category, sort by recommended, rating, rate
    or distance, read their reviews — or leave it and get the best available.
-4. Booking a day or more out earns 5% off labour. No dispatch fee, no surge.
-5. When its start time comes round, the booking turns itself into a live job and
+5. Booking a day or more out earns 5% off labour. No dispatch fee, no surge.
+6. When its start time comes round, the booking turns itself into a live job and
    the tracking screen lights up.
 
 ---
@@ -253,7 +258,7 @@ without it the two apps can't see each other.
 
 ## Tests
 
-146 tests in 13 suites, written with Swift Testing. All logic-only — no UI tests,
+156 tests in 14 suites, written with Swift Testing. All logic-only — no UI tests,
 no waiting.
 
 ```bash
@@ -268,7 +273,8 @@ What they cover:
 | Cancellation policy | Free while searching, the minute of grace after accept, the two-hour scheduled window |
 | Dispatch timeline | Every phase boundary, ETA countdown, that status is pure and idempotent, that a compressed clock reports the same minutes as a real one |
 | Routing | Deterministic routes, exact endpoints, clamped traversal, degenerate inputs, the ETA floor |
-| Scheduling | Notice window, opening hours, jobs that would run past closing, the horizon, and that `nextSlot` is bookable at every hour of the day |
+| Scheduling | Notice window, opening hours, jobs that would run past closing, the horizon, that `nextSlot` is bookable at every hour of the day, and that morning/afternoon/evening partition a day's slots exactly — nothing lost, nothing duplicated |
+| Slot labels | No meridiem on slot buttons, no leading zero on single-digit hours, and the window summary keeping its AM/PM |
 | Matching | Category filtering, deterministic ranking, favourite boost and its bounds, exclusion fallthrough, every sort order |
 | Fixtures | That the seeded roster and history are internally consistent |
 | Request draft | Category switches resetting duration and dropping incompatible helpers, slots sliding when a job gets longer, promo handling, the step machine |

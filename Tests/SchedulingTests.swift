@@ -3,6 +3,42 @@ import Testing
 
 @testable import HelpOnTheWay
 
+@Suite("Slot labels")
+struct SlotLabelTests {
+
+    private func at(_ hour: Int, _ minute: Int = 0) -> Date {
+        Calendar.current.date(from: DateComponents(
+            year: 2026, month: 6, day: 15, hour: hour, minute: minute
+        ))!
+    }
+
+    @Test("Slot buttons drop the meridiem — the part-of-day heading carries it")
+    func noMeridiem() {
+        let label = Format.shortTime(at(13, 30))
+        #expect(!label.contains("PM"))
+        #expect(!label.contains("pm"))
+        #expect(label.contains("30"))
+    }
+
+    @Test("No leading zero on single-digit hours")
+    func noLeadingZero() {
+        // "01:00" for one in the afternoon reads like a 24-hour clock. A
+        // 24-hour locale is a different story — there the padding is correct.
+        guard Format.usesTwelveHourClock else { return }
+        #expect(Format.shortTime(at(13)) == "1:00")
+        #expect(Format.shortTime(at(9)) == "9:00")
+        #expect(Format.shortTime(at(12, 30)) == "12:30")
+        // Midnight wraps to 12, not 0.
+        #expect(Format.shortTime(at(0, 15)) == "12:15")
+    }
+
+    @Test("The window summary keeps the meridiem, so the day is never ambiguous")
+    func windowKeepsMeridiem() {
+        let window = Format.window(at(13), minutes: 120)
+        #expect(window.contains("PM"))
+    }
+}
+
 @Suite("Scheduling rules")
 struct SchedulingTests {
 
@@ -114,6 +150,78 @@ struct SchedulingTests {
     @Test("The picker offers at most the horizon")
     func dayCountIsBounded() {
         #expect(Scheduling.days(minutes: 60, now: now).count <= Scheduling.horizonDays + 1)
+    }
+
+    @Test("Today is offered while it still has room")
+    func todayIsOfferedInTheMorning() {
+        // 9am with slots from 10am — today has to be the first day in the rail,
+        // or a customer who wants help this afternoon can't ask for it.
+        let days = Scheduling.days(minutes: 120, now: now)
+        #expect(days.first == Calendar.current.startOfDay(for: now))
+    }
+
+    // MARK: Parts of the day
+
+    @Test("The three parts cover every legal start hour exactly once")
+    func partsTileTheDay() {
+        let covered = Scheduling.DayPart.allCases.flatMap { Array($0.hours) }
+        #expect(covered.sorted() == Array(Scheduling.openHour...Scheduling.lastStartHour))
+        // No hour belongs to two parts.
+        #expect(Set(covered).count == covered.count)
+    }
+
+    @Test("An hour maps to the part it belongs to")
+    func partContaining() {
+        #expect(Scheduling.DayPart.containing(at(7)) == .morning)
+        #expect(Scheduling.DayPart.containing(at(11, 30)) == .morning)
+        #expect(Scheduling.DayPart.containing(at(12)) == .afternoon)
+        #expect(Scheduling.DayPart.containing(at(16, 30)) == .afternoon)
+        #expect(Scheduling.DayPart.containing(at(17)) == .evening)
+        #expect(Scheduling.DayPart.containing(at(20)) == .evening)
+    }
+
+    @Test("The parts partition the day's slots — nothing lost, nothing duplicated")
+    func partsPartitionSlots() {
+        let today = Calendar.current.startOfDay(for: now)
+        let all = Scheduling.slots(on: today, minutes: 60, now: now)
+        let byPart = Scheduling.DayPart.allCases.flatMap {
+            Scheduling.slots(on: today, minutes: 60, now: now, in: $0)
+        }
+        #expect(byPart.sorted() == all.sorted())
+    }
+
+    @Test("Availability counts match the slots in each part")
+    func availabilityCounts() {
+        let today = Calendar.current.startOfDay(for: now)
+        let counts = Scheduling.availability(on: today, minutes: 60, now: now)
+        #expect(counts.values.reduce(0, +) == Scheduling.slots(on: today, minutes: 60, now: now).count)
+        for part in Scheduling.DayPart.allCases {
+            #expect(counts[part] == Scheduling.slots(on: today, minutes: 60, now: now, in: part).count)
+        }
+        // 9am today: the morning is nearly gone, the rest of the day is open.
+        #expect(counts[.morning] == 4)      // 10:00, 10:30, 11:00, 11:30
+        #expect(counts[.afternoon] == 10)
+        #expect(counts[.evening] == 7)
+    }
+
+    @Test("A part with nothing left reports zero rather than being hidden")
+    func emptyPart() {
+        // Late evening: only tomorrow morning is left, so today has no parts.
+        let lateEvening = at(21, 30)
+        let today = Calendar.current.startOfDay(for: lateEvening)
+        let counts = Scheduling.availability(on: today, minutes: 60, now: lateEvening)
+        #expect(counts[.morning] == 0)
+        #expect(counts[.afternoon] == 0)
+        #expect(counts[.evening] == 0)
+    }
+
+    @Test("A long job empties the late parts first")
+    func longJobsShrinkTheEvening() {
+        let today = Calendar.current.startOfDay(for: now)
+        let counts = Scheduling.availability(on: today, minutes: 300, now: now)
+        // Five hours can't start after 5pm and be done by ten.
+        #expect(counts[.evening] == 1)
+        #expect((counts[.afternoon] ?? 0) > 0)
     }
 
     // MARK: Next slot

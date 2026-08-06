@@ -90,6 +90,31 @@ enum Format {
         date.formatted(date: .omitted, time: .shortened)
     }
 
+    /// "10:30" — no meridiem. Only for slot buttons sitting under a
+    /// morning/afternoon/evening heading, where AM or PM is already settled and
+    /// repeating it on every button just costs width.
+    ///
+    /// Built by hand rather than with a format style: asking `FormatStyle` to
+    /// omit the meridiem also makes it zero-pad the hour, and "01:00" for one in
+    /// the afternoon reads like a 24-hour clock. A 24-hour locale still gets its
+    /// padding, because there "09:00" is the correct shape.
+    static func shortTime(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let hour24 = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
+
+        if usesTwelveHourClock {
+            let hour = hour24 % 12 == 0 ? 12 : hour24 % 12
+            return String(format: "%d:%02d", hour, minute)
+        }
+        return String(format: "%02d:%02d", hour24, minute)
+    }
+
+    /// Asked of the locale rather than assumed.
+    static var usesTwelveHourClock: Bool {
+        DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current)?.contains("a") ?? true
+    }
+
     /// "Today, 3:30 PM" · "Tomorrow, 9:00 AM" · "Mon, Aug 10 at 9:00 AM"
     static func slot(_ date: Date, now: Date = Date()) -> String {
         let calendar = Calendar.current

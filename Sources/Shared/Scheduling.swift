@@ -76,6 +76,68 @@ enum Scheduling {
         issue(start: start, minutes: minutes, now: now) == nil
     }
 
+    /// Morning / afternoon / evening.
+    ///
+    /// A whole trading day is 27 half-hour starts, and listing them all made the
+    /// timing step a wall of identical buttons. People don't think "3:30pm"
+    /// first, they think "some afternoon" — so the picker asks for the part of
+    /// day, then shows only that handful.
+    enum DayPart: String, CaseIterable, Identifiable, Sendable {
+        case morning, afternoon, evening
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .morning: "Morning"
+            case .afternoon: "Afternoon"
+            case .evening: "Evening"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .morning: "sunrise.fill"
+            case .afternoon: "sun.max.fill"
+            case .evening: "sunset.fill"
+            }
+        }
+
+        /// Start hours that belong to this part. Together these cover exactly
+        /// `openHour...lastStartHour` with no gap and no overlap.
+        var hours: ClosedRange<Int> {
+            switch self {
+            case .morning: Scheduling.openHour...11
+            case .afternoon: 12...16
+            case .evening: 17...Scheduling.lastStartHour
+            }
+        }
+
+        func contains(_ date: Date, calendar: Calendar = .current) -> Bool {
+            hours.contains(calendar.component(.hour, from: date))
+        }
+
+        static func containing(_ date: Date, calendar: Calendar = .current) -> DayPart {
+            let hour = calendar.component(.hour, from: date)
+            return allCases.first { $0.hours.contains(hour) } ?? .morning
+        }
+    }
+
+    /// The bookable slots on a day, narrowed to one part of it.
+    static func slots(on day: Date, minutes: Int, now: Date = Date(), in part: DayPart) -> [Date] {
+        slots(on: day, minutes: minutes, now: now).filter { part.contains($0) }
+    }
+
+    /// Which parts of a day still have room, and how much — drives the picker's
+    /// segment labels and lets an empty part be disabled rather than silently
+    /// showing nothing.
+    static func availability(on day: Date, minutes: Int, now: Date = Date()) -> [DayPart: Int] {
+        let open = slots(on: day, minutes: minutes, now: now)
+        return DayPart.allCases.reduce(into: [:]) { result, part in
+            result[part] = open.filter { part.contains($0) }.count
+        }
+    }
+
     /// Every half-hour start on a given day that could actually take the job.
     static func slots(on day: Date, minutes: Int, now: Date = Date()) -> [Date] {
         let calendar = Calendar.current
