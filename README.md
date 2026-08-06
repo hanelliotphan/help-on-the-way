@@ -23,19 +23,31 @@ dispatcher stands down and waits for a person to tap Accept.
 Everything runs on-device. No account, no server, no network calls, no card
 fields.
 
-|  |  |  |
+| | | |
 |---|---|---|
-| ![Home](docs/01-home.png) | ![Quote](docs/02-review-quote.png) | ![Matching](docs/03-matching.png) |
-| Now or Later, with live demand | An itemised quote before you commit | The request out to the neighbourhood |
-| ![Live tracking](docs/08-tracking.png) | ![Scheduling](docs/04-schedule-later.png) | ![Browse helpers](docs/05-browse-helpers.png) |
-| Route, ETA and status, live | Real slots against real working hours | Compare the actual people |
+| ![Asking for help](docs/request.gif) | ![Two apps, one dispatcher](docs/handoff.gif) | ![Picking a time](docs/scheduler.gif) |
+| **Asking for help** — five steps, with the price updating as you go | **Two apps, one dispatcher** — the request goes out, a helper accepts in *their* app, tracking lights up in yours | **Picking a time** — morning, afternoon or evening, then the slots inside it |
 
-And the helper side:
+The middle one is the whole point of the repo, so it's worth watching: the
+"A helper is looking at this" screen is the customer app *declining to
+auto-assign* because a real helper app is on shift. The accept that follows comes
+from a different install.
+
+<details>
+<summary><b>More screens</b> (stills)</summary>
 
 | | | |
 |---|---|---|
-| ![Drive](docs/10-helper-drive.png) | ![Earnings](docs/11-helper-earnings.png) | ![Account](docs/12-helper-account.png) |
-| On shift, offers land here | What you keep, and what the platform took | Your profile, checks, and the live link |
+| ![Home](docs/01-home.png) | ![Quote](docs/02-review-quote.png) | ![Matching](docs/03-matching.png) |
+| Now or Later, with live demand | An itemised quote before you commit | Who was asked, who passed |
+| ![Live tracking](docs/08-tracking.png) | ![Rating](docs/09-rating.png) | ![Browse helpers](docs/05-browse-helpers.png) |
+| Route, ETA and status, live | Stars, compliments, a tip off labour | Compare the actual people |
+| ![Helper profile](docs/06-helper-profile.png) | ![Upcoming](docs/07-activity-upcoming.png) | ![Demo tools](docs/13-demo-tools.png) |
+| Reviews, checks, rebook rate | Scheduled work, with its window | Drive the simulation by hand |
+| ![Drive](docs/10-helper-drive.png) | ![Earnings](docs/11-helper-earnings.png) | ![Helper account](docs/12-helper-account.png) |
+| On shift, offers land here | What you keep, and what the platform took | Checks, cover, and the live link |
+
+</details>
 
 ---
 
