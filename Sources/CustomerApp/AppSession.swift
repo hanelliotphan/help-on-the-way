@@ -12,6 +12,8 @@ struct MatchingProgress: Hashable {
     var failed: Bool = false
     /// Non-zero once the simulation has stood down for a real helper app.
     var awaitingLiveHelpers: Int = 0
+    /// Set when somebody has answered the offered rate with a number of their own.
+    var counteredBy: Helper?
     /// When we started waiting on a person. Bounded, so a helper app that was
     /// force-quit while on shift can't leave a request hanging forever.
     var awaitingSince: Date?
@@ -175,6 +177,12 @@ final class AppSession {
             job.helperWasChosen = true
         }
 
+        // A named rate travels with the job as an opening offer, so whoever
+        // picks it up answers the number rather than silently working for it.
+        if let offered = draft.offeredRate {
+            job.negotiation = RateNegotiation(openingRate: offered, at: now)
+        }
+
         if timing.isInstant {
             job.events.append(JobEvent(
                 at: now, status: .searching,
@@ -246,7 +254,29 @@ final class AppSession {
                 // `adoptExternalChanges()` notices on the next tick.
                 matching[jobID, default: MatchingProgress()].awaitingLiveHelpers = count
                 matching[jobID]?.awaitingSince = Date()
+            case .countered(let helper, let rate):
+                // The job stays searching; the customer now owes an answer.
+                // Read once, mutate the copy, write once — a nested read inside
+                // an @Observable setter's write is an exclusivity trap.
+                var countered = jobs[index]
+                countered.negotiation?.counter(rate, byCustomer: false, helperID: helper.id)
+                countered.events.append(JobEvent(
+                    at: Date(), status: .searching,
+                    note: "\(helper.displayName) countered at \(Format.rate(rate))"
+                ))
+                jobs[index] = countered
+                matching[jobID]?.counteredBy = helper
+                toast = "\(helper.firstName) wants \(Format.rate(rate))."
+                scheduleSave()
             case .accepted(let helper):
+                if var negotiation = jobs[index].negotiation, !negotiation.isSettled {
+                    let agreed = negotiation.customerFacingRate
+                    negotiation.agree(at: agreed)
+                    var settled = jobs[index]
+                    settled.negotiation = negotiation
+                    settled.quote = Pricing.reprice(settled.quote, at: agreed)
+                    jobs[index] = settled
+                }
                 accept(helper: helper, forJobAt: index)
             case .failed:
                 matching[jobID, default: MatchingProgress()].failed = true
@@ -303,6 +333,64 @@ final class AppSession {
         Task { await runMatching(for: jobID) }
     }
 
+    // MARK: Haggling
+
+    /// Takes the helper's number. The quote is re-priced at the agreed rate
+    /// before the job is handed to them, so what they accepted is what gets
+    /// charged.
+    func acceptCounter(jobID: UUID) {
+        guard let index = index(of: jobID),
+              var negotiation = jobs[index].negotiation,
+              negotiation.awaitingCustomer
+        else { return }
+
+        let counter = negotiation.latest
+        negotiation.agree(at: counter.rate)
+
+        var agreed = jobs[index]
+        agreed.negotiation = negotiation
+        agreed.quote = Pricing.reprice(agreed.quote, at: counter.rate)
+        agreed.events.append(JobEvent(
+            at: Date(), status: .searching,
+            note: "Agreed \(Format.rate(counter.rate))"
+        ))
+        jobs[index] = agreed
+
+        guard let helper = counter.helperID.flatMap({ id in backend.roster.first { $0.id == id } }) else { return }
+        accept(helper: helper, forJobAt: index)
+        toast = "Booked at \(Format.rate(counter.rate))."
+    }
+
+    /// Comes back with a different number. The job goes back out at the new
+    /// rate, and the dispatcher answers it again.
+    func counterBack(jobID: UUID, rate: Decimal) {
+        guard let index = index(of: jobID),
+              var negotiation = jobs[index].negotiation,
+              Negotiation.isValid(offering: rate, in: negotiation)
+        else { return }
+
+        negotiation.counter(rate, byCustomer: true)
+
+        var reoffered = jobs[index]
+        reoffered.negotiation = negotiation
+        reoffered.quote = Pricing.reprice(reoffered.quote, at: rate)
+        reoffered.status = .searching
+        reoffered.events.append(JobEvent(
+            at: Date(), status: .searching, note: "Countered at \(Format.rate(rate))"
+        ))
+        jobs[index] = reoffered
+        matching[jobID, default: MatchingProgress()].counteredBy = nil
+        matching[jobID]?.declined = []
+        scheduleSave()
+        Task { await runMatching(for: jobID) }
+    }
+
+    func declineCounter(jobID: UUID) {
+        guard let index = index(of: jobID) else { return }
+        jobs[index].negotiation?.decline(byCustomer: true)
+        cancel(jobID: jobID, reason: "Couldn't agree on a rate")
+    }
+
     // MARK: Cancelling
 
     func cancel(jobID: UUID, reason: String) {
@@ -344,10 +432,12 @@ final class AppSession {
 
     func rate(jobID: UUID, rating: JobRating) {
         guard let index = index(of: jobID) else { return }
-        jobs[index].rating = rating
+        var rated = jobs[index]
+        rated.rating = rating
         if rating.tip > 0 {
-            jobs[index].finalTotal = (jobs[index].finalTotal ?? jobs[index].quote.total) + rating.tip
+            rated.finalTotal = (rated.finalTotal ?? rated.quote.total) + rating.tip
         }
+        jobs[index] = rated
         if rating.stars >= 5, let helperID = jobs[index].helper?.id {
             profile.favoriteHelperIDs.insert(helperID)
         }
@@ -428,9 +518,11 @@ final class AppSession {
                 let lead = Scheduling.leadSeconds(travelMinutes: travel, timeScale: timeScale)
                 let launchAt = jobs[index].startsAt.addingTimeInterval(-lead)
                 if now >= launchAt {
-                    jobs[index].status = .accepted
-                    jobs[index].dispatch = makePlan(for: jobs[index], helper: helper, acceptedAt: launchAt)
-                    jobs[index].events.append(JobEvent(at: launchAt, status: .accepted, note: "\(helper.displayName) is starting out"))
+                    var launching = jobs[index]
+                    launching.status = .accepted
+                    launching.dispatch = makePlan(for: launching, helper: helper, acceptedAt: launchAt)
+                    launching.events.append(JobEvent(at: launchAt, status: .accepted, note: "\(helper.displayName) is starting out"))
+                    jobs[index] = launching
                     changed = true
                 }
             }
@@ -463,10 +555,12 @@ final class AppSession {
 
     private func finish(jobAt index: Int, plan: DispatchPlan) {
         let billed = plan.jobMinutes
-        jobs[index].billedMinutes = billed
-        jobs[index].finalTotal = Pricing.settle(jobs[index].quote, billedMinutes: billed).total
-        if trackingJobID == jobs[index].id { trackingJobID = nil }
-        ratingJobID = jobs[index].id
+        var finished = jobs[index]
+        finished.billedMinutes = billed
+        finished.finalTotal = Pricing.settle(finished.quote, billedMinutes: billed).total
+        jobs[index] = finished
+        if trackingJobID == finished.id { trackingJobID = nil }
+        ratingJobID = finished.id
     }
 
     // MARK: Demo tools

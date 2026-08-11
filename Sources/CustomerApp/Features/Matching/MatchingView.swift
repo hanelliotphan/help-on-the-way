@@ -8,6 +8,8 @@ struct MatchingView: View {
 
     @State private var pulse = false
     @State private var showingCancel = false
+    @State private var showingCounter = false
+    @State private var counterRate: Decimal = .zero
 
     private var job: Job? { session.job(jobID) }
     private var progress: MatchingProgress { session.matching[jobID] ?? MatchingProgress() }
@@ -33,6 +35,9 @@ struct MatchingView: View {
                     VStack(spacing: 22) {
                         radar
                         headline
+                        if let job, let negotiation = job.negotiation, negotiation.awaitingCustomer {
+                            counterCard(job, negotiation: negotiation)
+                        }
                         if !candidates.isEmpty { candidateList }
                         if let job { jobRecap(job) }
                     }
@@ -61,6 +66,12 @@ struct MatchingView: View {
         }
         .onAppear {
             withAnimation(.easeOut(duration: 2.4).repeatForever(autoreverses: false)) { pulse = true }
+        }
+        .sheet(isPresented: $showingCounter) {
+            if let job, let negotiation = job.negotiation {
+                counterSheet(job, negotiation: negotiation)
+                    .presentationDetents([.medium])
+            }
         }
     }
 
@@ -107,7 +118,12 @@ struct MatchingView: View {
         }
     }
 
+    private var isHaggling: Bool {
+        job?.negotiation?.awaitingCustomer == true
+    }
+
     private var headlineTitle: String {
+        if isHaggling { return "They want more per hour" }
         if progress.failed { return "Nobody's free right now" }
         if progress.awaitingLiveHelpers > 0 {
             return progress.awaitingLiveHelpers == 1
@@ -118,6 +134,9 @@ struct MatchingView: View {
     }
 
     private var headlineDetail: String {
+        if isHaggling {
+            return "Your offer was under their rate. Nothing is booked and nothing is charged until you agree on a number."
+        }
         if progress.failed {
             return "Every \(job?.category.title.lowercased() ?? "") helper near you is mid-job. Booking a time gets you the same people at a lower rate."
         }
@@ -127,6 +146,154 @@ struct MatchingView: View {
             return "Somebody on shift has your request open in their app right now. Nothing is auto-assigned while they decide."
         }
         return "They see your notes, your address and what it pays. First one to take it is yours."
+    }
+
+    // MARK: The counter
+
+    /// Somebody has answered the offered rate with a number of their own. Three
+    /// ways out: take it, come back with another number, or walk.
+    private func counterCard(_ job: Job, negotiation: RateNegotiation) -> some View {
+        let counter = negotiation.latest
+        let helper = counter.helperID.flatMap { id in session.backend.roster.first { $0.id == id } }
+        let yours = negotiation.customerFacingRate
+        let hours = Decimal(job.quote.minutes) / 60
+        let extra = ((counter.rate - yours) * hours).roundedToCents()
+
+        return Card(spacing: 13) {
+            HStack(spacing: 11) {
+                if let helper { Avatar(helper: helper, size: 42) }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(helper?.displayName ?? "A helper") countered")
+                        .font(.subheadline.weight(.semibold))
+                    if let helper {
+                        Text(Negotiation.rationale(for: counter.rate, helper: helper))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 0) {
+                VStack(spacing: 2) {
+                    Text("You offered")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(Format.rate(yours))
+                        .font(.subheadline.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+
+                Image(systemName: "arrow.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+
+                VStack(spacing: 2) {
+                    Text("They want")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(Format.rate(counter.rate))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Palette.instant)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.vertical, 9)
+            .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            Text(extra > 0
+                 ? "That's \(extra.currency) more over \(Format.duration(minutes: job.quote.minutes))."
+                 : "Same total over \(Format.duration(minutes: job.quote.minutes)).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            BigButton(title: "Accept \(Format.rate(counter.rate))", symbol: "checkmark", tint: Palette.success) {
+                session.acceptCounter(jobID: jobID)
+            }
+
+            HStack(spacing: 10) {
+                QuietButton(title: "Counter", symbol: "arrow.uturn.left", tint: Palette.instant) {
+                    counterRate = midpoint(between: yours, and: counter.rate)
+                    showingCounter = true
+                }
+                QuietButton(title: "Let it go", symbol: "xmark", tint: Palette.danger) {
+                    session.declineCounter(jobID: jobID)
+                }
+            }
+        }
+    }
+
+    private func midpoint(between mine: Decimal, and theirs: Decimal) -> Decimal {
+        Negotiation.roundedToStep((mine + theirs) / 2)
+    }
+
+    private func counterSheet(_ job: Job, negotiation: RateNegotiation) -> some View {
+        let theirs = negotiation.latest.rate
+
+        return NavigationStack {
+            VStack(spacing: 18) {
+                Text("They asked \(Format.rate(theirs)). What's your number?")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 14) {
+                    Button { counterRate -= Negotiation.step } label: {
+                        Image(systemName: "minus")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 52, height: 52)
+                            .background(Palette.instantSoft, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+
+                    VStack(spacing: 1) {
+                        Text(counterRate.shortCurrency)
+                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                        Text("per hour")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Button { counterRate += Negotiation.step } label: {
+                        Image(systemName: "plus")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 52, height: 52)
+                            .background(Palette.instantSoft, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .foregroundStyle(Palette.instant)
+
+                if let issue = Negotiation.issue(offering: counterRate, in: negotiation) {
+                    Text(issue.message)
+                        .font(.caption)
+                        .foregroundStyle(Palette.danger)
+                        .multilineTextAlignment(.center)
+                }
+
+                Spacer()
+
+                BigButton(
+                    title: "Send \(Format.rate(counterRate))",
+                    symbol: "paperplane.fill",
+                    tint: Palette.instant,
+                    isEnabled: Negotiation.isValid(offering: counterRate, in: negotiation)
+                ) {
+                    showingCounter = false
+                    session.counterBack(jobID: jobID, rate: counterRate)
+                }
+            }
+            .padding(20)
+            .background(Palette.canvas)
+            .navigationTitle("Your counter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { showingCounter = false }
+                }
+            }
+        }
     }
 
     // MARK: Who was asked

@@ -115,6 +115,7 @@ struct DetailsStep: View {
             }
 
             durationCard
+            rateCard
             photosCard
 
             Card(spacing: 9) {
@@ -145,6 +146,9 @@ struct DetailsStep: View {
         case .techHelp: "New router — Wi-Fi doesn't reach the back bedroom."
         case .petCare: "Two walks and a feed. Friendly beagle, pulls a bit."
         case .eventHelp: "Sixty covers, tables and chairs to set and strike."
+        // Nothing to hint at — the notes *are* the job description here, so the
+        // placeholder asks for the two things a helper can't guess.
+        case .custom: "What needs doing, and anything you'd want to know before saying yes to it."
         }
     }
 
@@ -200,6 +204,112 @@ struct DetailsStep: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Naming your own hourly rate. Compulsory for Custom, which has no going
+    /// rate to fall back on; opt-in everywhere else.
+    private var rateCard: some View {
+        let band = Negotiation.goingRate(for: draft.category, in: session.backend.roster)
+
+        return Card(spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(draft.category == .custom ? "Your rate" : "Rate")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(Format.rate(draft.hourlyRate))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(draft.isNegotiating ? Palette.instant : Palette.accent)
+            }
+
+            if draft.isNegotiating {
+                HStack(spacing: 12) {
+                    Button {
+                        draft.setOfferedRate((draft.offeredRate ?? draft.hourlyRate) - Negotiation.step)
+                    } label: {
+                        stepperGlyph("minus")
+                    }
+                    .buttonStyle(.plain)
+
+                    VStack(spacing: 1) {
+                        Text(draft.hourlyRate.shortCurrency)
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundStyle(Palette.instant)
+                        Text("per hour")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Button {
+                        draft.setOfferedRate((draft.offeredRate ?? draft.hourlyRate) + Negotiation.step)
+                    } label: {
+                        stepperGlyph("plus")
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let band {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chart.bar.fill")
+                            .font(.caption2)
+                        Text("\(draft.category.title) helpers near you charge \(band.lowerBound.shortCurrency)–\(band.upperBound.shortCurrency)")
+                            .font(.caption)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(rateReadout(band: band).1)
+                    Text(rateReadout(band: band).0)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let issue = draft.rateIssue {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                        Text(issue.message)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Palette.danger)
+                }
+
+                if draft.category != .custom {
+                    Button("Use the going rate instead") {
+                        withAnimation(.snappy) { draft.setOfferedRate(nil) }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+            } else {
+                Text("The going rate for \(draft.category.title.lowercased()). You can offer your own instead and let helpers accept or counter.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                QuietButton(title: "Name your own rate", symbol: "tag.fill", tint: Palette.instant) {
+                    withAnimation(.snappy) { draft.startNegotiating(roster: session.backend.roster) }
+                }
+            }
+        }
+    }
+
+    private func stepperGlyph(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.headline)
+            .foregroundStyle(Palette.instant)
+            .frame(width: 46, height: 46)
+            .background(Palette.instantSoft, in: Circle())
+    }
+
+    /// Tells the customer where their number sits, because "is this enough?" is
+    /// the only real question when you're naming a rate.
+    private func rateReadout(band: ClosedRange<Decimal>) -> (String, Color) {
+        let rate = draft.hourlyRate
+        if rate < band.lowerBound {
+            return ("Under everyone's rate — expect counters, or nobody biting.", Palette.danger)
+        }
+        if rate >= band.upperBound {
+            return ("At or above the top of the range. Anyone free should take it.", Palette.success)
+        }
+        let takers = session.backend.roster
+            .filter { $0.handles(draft.category) && $0.hourlyRate <= rate }
+            .count
+        return ("\(takers) of them work at this rate or less.", Palette.success)
     }
 
     private var photosCard: some View {

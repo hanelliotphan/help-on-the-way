@@ -132,6 +132,8 @@ final class HelperSession {
             .filter { $0.status == .searching }
             .filter { me.handles($0.category) }
             .filter { !declinedJobIDs.contains($0.id) }
+            // A rate we've already countered is the customer's move, not ours.
+            .filter { $0.negotiation?.awaitingCustomer != true }
             .filter { me.basePoint.miles(to: $0.address.point) <= Matching.radiusMiles }
             .sorted { $0.createdAt > $1.createdAt }
     }
@@ -199,6 +201,15 @@ final class HelperSession {
             var taken = snapshot.jobs[index]
             taken.helper = me
             taken.status = .accepted
+            // Accepting settles the haggling at whatever the customer last
+            // offered, and the quote is re-priced to match before anyone is
+            // charged for it.
+            if var negotiation = taken.negotiation, !negotiation.isSettled {
+                let agreed = negotiation.customerFacingRate
+                negotiation.agree(at: agreed)
+                taken.negotiation = negotiation
+                taken.quote = Pricing.reprice(taken.quote, at: agreed)
+            }
             taken.dispatch = Dispatch.plan(
                 helper: me,
                 destination: taken.address.point,
@@ -226,6 +237,39 @@ final class HelperSession {
 
     func decline(_ job: Job) {
         declinedJobIDs.insert(job.id)
+    }
+
+    /// Answers a named rate with a number of the helper's own. The job stays
+    /// open — the customer now owes a reply.
+    func counter(_ job: Job, rate: Decimal) {
+        guard let me, var negotiation = job.negotiation,
+              Negotiation.isValid(offering: rate, in: negotiation)
+        else { return }
+
+        negotiation.counter(rate, byCustomer: false, helperID: me.id)
+        commit { snapshot in
+            guard let index = snapshot.jobs.firstIndex(where: { $0.id == job.id }),
+                  snapshot.jobs[index].status == .searching
+            else { return }
+            snapshot.jobs[index].negotiation = negotiation
+            snapshot.jobs[index].events.append(JobEvent(
+                at: Date(), status: .searching,
+                note: "\(me.displayName) countered at \(Format.rate(rate))"
+            ))
+        }
+        toast = "Countered at \(Format.rate(rate)). Waiting on them."
+    }
+
+    /// What this helper would say to the offer, so the app can pre-fill a
+    /// sensible counter instead of making them guess.
+    func suggestedCounter(for job: Job) -> Decimal? {
+        guard let me, let negotiation = job.negotiation else { return nil }
+        if case .counter(let rate) = Negotiation.response(
+            to: negotiation.customerFacingRate, helper: me, negotiation: negotiation
+        ) {
+            return rate
+        }
+        return me.hourlyRate
     }
 
     // MARK: Working it

@@ -174,20 +174,34 @@ enum Pricing {
         let blocks = Int((Double(billedMinutes) / 15).rounded(.up))
         let minutes = max(quote.minutes, blocks * 15)
         guard minutes != quote.minutes else { return quote }
+        return rebuild(quote, minutes: minutes, hourlyRate: quote.hourlyRate)
+    }
 
-        var settled = quote
-        let hours = Decimal(minutes) / 60
-        settled.minutes = minutes
-        settled.labor = (quote.hourlyRate * hours).roundedToCents()
-        settled.surgeAmount = quote.surgeMultiplier > 1
-            ? (settled.labor * (quote.surgeMultiplier - 1)).roundedToCents()
+    /// Re-prices a quote at a newly agreed rate, keeping the duration and every
+    /// adjustment that was settled at booking time. This is what a finished
+    /// negotiation runs through.
+    static func reprice(_ quote: Quote, at hourlyRate: Decimal) -> Quote {
+        guard hourlyRate != quote.hourlyRate else { return quote }
+        return rebuild(quote, minutes: quote.minutes, hourlyRate: hourlyRate)
+    }
+
+    /// The one place labour, surge, fee and tax are recomputed. `settle` changes
+    /// the hours, `reprice` changes the rate, and neither is allowed to drift
+    /// from the other on how a total is built.
+    private static func rebuild(_ quote: Quote, minutes: Int, hourlyRate: Decimal) -> Quote {
+        var rebuilt = quote
+        rebuilt.minutes = minutes
+        rebuilt.hourlyRate = hourlyRate
+        rebuilt.labor = (hourlyRate * (Decimal(minutes) / 60)).roundedToCents()
+        rebuilt.surgeAmount = quote.surgeMultiplier > 1
+            ? (rebuilt.labor * (quote.surgeMultiplier - 1)).roundedToCents()
             : .zero
-        let subtotal = max(.zero, settled.labor + settled.urgencyFee + settled.surgeAmount
-            - settled.plannedDiscount - settled.promoDiscount)
-        settled.serviceFee = max(minimumServiceFee, (subtotal * serviceFeeRate).roundedToCents())
-        settled.tax = ((subtotal + settled.serviceFee) * taxRate).roundedToCents()
-        settled.total = subtotal + settled.serviceFee + settled.tax
-        return settled
+        let subtotal = max(.zero, rebuilt.labor + rebuilt.urgencyFee + rebuilt.surgeAmount
+            - rebuilt.plannedDiscount - rebuilt.promoDiscount)
+        rebuilt.serviceFee = max(minimumServiceFee, (subtotal * serviceFeeRate).roundedToCents())
+        rebuilt.tax = ((subtotal + rebuilt.serviceFee) * taxRate).roundedToCents()
+        rebuilt.total = subtotal + rebuilt.serviceFee + rebuilt.tax
+        return rebuilt
     }
 }
 

@@ -47,6 +47,9 @@ final class RequestDraft {
     /// Set when the customer picked somebody themselves rather than letting the
     /// dispatcher choose.
     var chosenHelper: Helper?
+    /// Set when the customer names their own hourly rate instead of taking the
+    /// category's going rate. Always set for Custom, which has no going rate.
+    var offeredRate: Decimal?
     var paymentMethod: PaymentMethod?
     var promoText: String = ""
     var appliedPromo: Promo?
@@ -62,6 +65,9 @@ final class RequestDraft {
         self.category = category
         self.address = address
         self.minutes = category.minimumMinutes
+        if category == .custom {
+            self.offeredRate = Negotiation.suggestedOpening(for: category, in: MockData.helpers)
+        }
         self.wantsInstant = wantsInstant && category.supportsInstant
         self.scheduledStart = Scheduling.nextSlot(minutes: category.minimumMinutes, now: now)
         self.step = step
@@ -78,8 +84,29 @@ final class RequestDraft {
         return trimmed.isEmpty ? category.defaultJobTitle : trimmed
     }
 
+    /// A rate the customer named beats both the chosen helper's rate and the
+    /// category's — it's an offer, and the whole point is that it's theirs.
     var hourlyRate: Decimal {
-        Pricing.hourlyRate(category: category, helper: chosenHelper)
+        offeredRate ?? Pricing.hourlyRate(category: category, helper: chosenHelper)
+    }
+
+    var isNegotiating: Bool { offeredRate != nil }
+
+    var rateIssue: Negotiation.Issue? {
+        offeredRate.flatMap { Negotiation.issue(offering: $0) }
+    }
+
+    func setOfferedRate(_ rate: Decimal?) {
+        offeredRate = rate.map(Negotiation.roundedToStep)
+    }
+
+    /// Opens rate negotiation at whatever the job is currently priced at, so
+    /// turning it on never jumps the number under the customer.
+    func startNegotiating(roster: [Helper]) {
+        guard offeredRate == nil else { return }
+        offeredRate = Negotiation.roundedToStep(
+            category == .custom ? Negotiation.suggestedOpening(for: category, in: roster) : hourlyRate
+        )
     }
 
     var billableMinutes: Int {
@@ -109,7 +136,7 @@ final class RequestDraft {
     func canAdvance(now: Date = Date()) -> Bool {
         switch step {
         case .category: true
-        case .details: minutes > 0
+        case .details: minutes > 0 && rateIssue == nil
         case .location: address != nil
         case .timing: schedulingIssue(now: now) == nil
         case .review: address != nil && schedulingIssue(now: now) == nil
@@ -133,9 +160,14 @@ final class RequestDraft {
     func select(category newValue: HelpCategory, now: Date = Date()) {
         guard newValue != category else { return }
         category = newValue
-        // Duration and helper were tied to the old category; both have to go.
+        // Duration, helper and rate were all tied to the old category.
         minutes = newValue.minimumMinutes
         if let chosen = chosenHelper, !chosen.handles(newValue) { chosenHelper = nil }
+        // Custom has no going rate, so it always opens negotiating. Anything
+        // else falls back to its own rate until the customer opts in again.
+        offeredRate = newValue == .custom
+            ? Negotiation.suggestedOpening(for: newValue, in: MockData.helpers)
+            : nil
         if !newValue.supportsInstant { wantsInstant = false }
         scheduledStart = Scheduling.nextSlot(minutes: minutes, now: now)
     }

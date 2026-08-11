@@ -100,6 +100,9 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
     case techHelp
     case petCare
     case eventHelp
+    /// Anything the catalogue doesn't cover. Has no standard rate, so the
+    /// customer names one and it gets negotiated from there.
+    case custom
 
     var id: String { rawValue }
 
@@ -114,6 +117,7 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: "Tech Help"
         case .petCare: "Pet Care"
         case .eventHelp: "Event Help"
+        case .custom: "Custom"
         }
     }
 
@@ -137,6 +141,7 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: "laptopcomputer"
         case .petCare: "pawprint.fill"
         case .eventHelp: "party.popper.fill"
+        case .custom: "square.dashed"
         }
     }
 
@@ -151,6 +156,7 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: "Wi-Fi, TVs, printers, new-device setup"
         case .petCare: "Walks, drop-in visits, vet runs"
         case .eventHelp: "Setup, serving, cleanup crews"
+        case .custom: "Describe it and name your rate"
         }
     }
 
@@ -165,6 +171,9 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: .usd(55)
         case .petCare: .usd(38)
         case .eventHelp: .usd(42)
+        // No going rate to quote — this is only a starting point for the
+        // conversation, and the customer is expected to change it.
+        case .custom: .usd(50)
         }
     }
 
@@ -214,6 +223,8 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
             ["GPS-tracked walks with photos", "Food, water and litter", "Vet and groomer transport"]
         case .eventHelp:
             ["Tables, chairs and linens set", "Serving and bussing through the night", "Full teardown and haul-out"]
+        case .custom:
+            ["Exactly what you write in the notes", "Tools and supplies as agreed", "Nothing assumed — spell it out"]
         }
     }
 
@@ -229,6 +240,7 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: "Set up a device"
         case .petCare: "Dog walk"
         case .eventHelp: "Event setup and teardown"
+        case .custom: "Something else"
         }
     }
 }
@@ -313,7 +325,12 @@ struct Helper: Identifiable, Codable, Hashable, Sendable {
         min(94, max(55, Int(((rating - 4.7) * 40 + 76).rounded())))
     }
 
-    func handles(_ category: HelpCategory) -> Bool { skills.contains(category) }
+    /// Custom isn't a skill — it's "something else", and the job description is
+    /// the only thing to judge it on. Filtering the roster by it would leave
+    /// nobody, so every helper is eligible and decides for themselves.
+    func handles(_ category: HelpCategory) -> Bool {
+        category == .custom || skills.contains(category)
+    }
 }
 
 // MARK: - Customer account
@@ -478,6 +495,74 @@ struct JobRating: Codable, Hashable, Sendable {
     ]
 }
 
+// MARK: - Haggling over the rate
+
+/// One side's number, on the record.
+struct RateProposal: Identifiable, Codable, Hashable, Sendable {
+    var id: UUID = UUID()
+    var rate: Decimal
+    var byCustomer: Bool
+    var at: Date = Date()
+    var note: String = ""
+    /// Which helper countered. Nil on the customer's own proposals.
+    var helperID: UUID?
+}
+
+/// The back-and-forth over an hourly rate.
+///
+/// Kept as the full list rather than just the current number, because "they
+/// asked 64, I said 52, they came back at 58" is the thing both sides want to
+/// see — and it's what stops either app from quietly rewriting history.
+struct RateNegotiation: Codable, Hashable, Sendable {
+    /// Chronological. The first entry is always the customer's opening offer.
+    var proposals: [RateProposal]
+    var agreedRate: Decimal?
+    var declinedBy: Bool?
+
+    init(openingRate: Decimal, at date: Date = Date(), note: String = "") {
+        proposals = [RateProposal(rate: openingRate, byCustomer: true, at: date, note: note)]
+    }
+
+    var opening: RateProposal { proposals[0] }
+    var latest: RateProposal { proposals[proposals.count - 1] }
+
+    var isSettled: Bool { agreedRate != nil || declinedBy != nil }
+
+    /// The customer has a number in front of them they haven't answered.
+    var awaitingCustomer: Bool { !isSettled && !latest.byCustomer }
+    /// The helper side has the ball — either the opening offer or a counter-back.
+    var awaitingHelper: Bool { !isSettled && latest.byCustomer }
+
+    /// What the job should be priced at right now: the agreement if there is
+    /// one, otherwise the most recent thing the *customer* put on the table.
+    /// A helper's counter doesn't move the price until it's accepted.
+    var customerFacingRate: Decimal {
+        agreedRate ?? proposals.last { $0.byCustomer }?.rate ?? opening.rate
+    }
+
+    /// How far apart the two sides still are.
+    var gap: Decimal? {
+        guard !isSettled, !latest.byCustomer else { return nil }
+        return latest.rate - customerFacingRate
+    }
+
+    var rounds: Int { proposals.count }
+
+    mutating func counter(_ rate: Decimal, byCustomer: Bool, helperID: UUID? = nil, note: String = "", at date: Date = Date()) {
+        proposals.append(RateProposal(
+            rate: rate, byCustomer: byCustomer, at: date, note: note, helperID: helperID
+        ))
+    }
+
+    mutating func agree(at rate: Decimal) {
+        agreedRate = rate
+    }
+
+    mutating func decline(byCustomer: Bool) {
+        declinedBy = byCustomer
+    }
+}
+
 struct Job: Identifiable, Codable, Hashable, Sendable {
     var id: UUID = UUID()
     var category: HelpCategory
@@ -503,6 +588,15 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
     /// Set when the customer picked this person themselves instead of taking
     /// whoever the dispatcher found.
     var helperWasChosen: Bool = false
+    /// Present when the rate was named by the customer rather than taken from
+    /// the category's going rate — always for Custom, optionally for the rest.
+    var negotiation: RateNegotiation?
+
+    /// True while a helper's counter is sitting unanswered. The one state the
+    /// customer has to be pulled back into the app for.
+    var needsRateResponse: Bool {
+        status == .searching && negotiation?.awaitingCustomer == true
+    }
 
     var startsAt: Date {
         timing.scheduledStart ?? createdAt

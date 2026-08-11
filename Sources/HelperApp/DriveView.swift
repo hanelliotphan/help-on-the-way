@@ -199,6 +199,19 @@ struct OfferCard: View {
     @Environment(HelperSession.self) private var session
     let job: Job
 
+    @State private var showingCounter = false
+    @State private var counterRate: Decimal = .zero
+
+    /// Only a job whose rate the customer named can be haggled over. A standard
+    /// category rate isn't up for discussion.
+    private var isNegotiable: Bool {
+        job.negotiation?.isSettled == false
+    }
+
+    private var offeredRate: Decimal {
+        job.negotiation?.customerFacingRate ?? job.quote.hourlyRate
+    }
+
     var body: some View {
         Card(spacing: 13) {
             HStack(alignment: .top) {
@@ -215,6 +228,24 @@ struct OfferCard: View {
                     if job.quote.isSurging {
                         Chip(text: "Busy area", symbol: "chart.line.uptrend.xyaxis", tint: Palette.instant)
                     }
+                    if isNegotiable {
+                        Chip(text: "Their price", symbol: "tag.fill", tint: Palette.instant)
+                    }
+                }
+            }
+
+            if isNegotiable, let me = session.me {
+                // The comparison that decides it: their number against yours.
+                HStack(spacing: 8) {
+                    Image(systemName: offeredRate >= me.hourlyRate ? "checkmark.circle.fill" : "arrow.down.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(offeredRate >= me.hourlyRate ? Palette.success : Palette.instant)
+                    Text(offeredRate >= me.hourlyRate
+                         ? "\(Format.rate(offeredRate)) offered — at or above your \(Format.rate(me.hourlyRate))."
+                         : "\(Format.rate(offeredRate)) offered — you usually get \(Format.rate(me.hourlyRate)).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
                 }
             }
 
@@ -271,6 +302,21 @@ struct OfferCard: View {
                 }
                 .buttonStyle(.plain)
 
+                if isNegotiable {
+                    Button {
+                        counterRate = session.suggestedCounter(for: job) ?? offeredRate
+                        showingCounter = true
+                    } label: {
+                        Text("Counter")
+                            .font(.subheadline.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .foregroundStyle(Palette.instant)
+                            .background(Palette.instantSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Button {
                     session.accept(job)
                 } label: {
@@ -282,6 +328,81 @@ struct OfferCard: View {
                         .background(Palette.helper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
+            }
+        }
+        .sheet(isPresented: $showingCounter) {
+            counterSheet
+                .presentationDetents([.medium])
+        }
+    }
+
+    private var counterSheet: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                Text("They're offering \(Format.rate(offeredRate)) for \(Format.duration(minutes: job.quote.minutes)). Name your rate.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 14) {
+                    Button { counterRate -= Negotiation.step } label: {
+                        Image(systemName: "minus")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 52, height: 52)
+                            .background(Palette.helperSoft, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+
+                    VStack(spacing: 1) {
+                        Text(counterRate.shortCurrency)
+                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                        Text("per hour")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Button { counterRate += Negotiation.step } label: {
+                        Image(systemName: "plus")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 52, height: 52)
+                            .background(Palette.helperSoft, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .foregroundStyle(Palette.helper)
+
+                if let issue = Negotiation.issue(offering: counterRate, in: job.negotiation) {
+                    Text(issue.message)
+                        .font(.caption)
+                        .foregroundStyle(Palette.danger)
+                        .multilineTextAlignment(.center)
+                } else {
+                    Text("\(((counterRate - offeredRate) * Decimal(job.quote.minutes) / 60).roundedToCents().currency) more than they offered, over the whole job.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                BigButton(
+                    title: "Send \(Format.rate(counterRate))",
+                    symbol: "paperplane.fill",
+                    tint: Palette.helper,
+                    isEnabled: Negotiation.isValid(offering: counterRate, in: job.negotiation)
+                ) {
+                    showingCounter = false
+                    session.counter(job, rate: counterRate)
+                }
+            }
+            .padding(20)
+            .background(Palette.canvas)
+            .navigationTitle("Your counter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { showingCounter = false }
+                }
             }
         }
     }

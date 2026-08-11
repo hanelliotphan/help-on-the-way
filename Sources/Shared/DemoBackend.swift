@@ -20,6 +20,8 @@ enum MatchingUpdate: Sendable {
     /// A real helper app is online and looking at this offer, so the simulation
     /// stands down and waits for a person to tap Accept.
     case awaitingLiveHelper(count: Int)
+    /// The rate was too low for them, but not so low they walked away.
+    case countered(Helper, rate: Decimal)
     case accepted(Helper)
     case failed
 }
@@ -82,6 +84,7 @@ final class DemoBackend {
         let seed = job.id
         let scale = latencyScale
         let blocked = simulateNoHelpers
+        let negotiation = job.negotiation
         let ranked = Matching.candidates(for: category, near: point, in: roster, favorites: favorites)
 
         return AsyncStream { continuation in
@@ -131,7 +134,26 @@ final class DemoBackend {
                 }
 
                 await pause(1.8)
-                continuation.yield(.accepted(ranked[min(declines, ranked.count - 1)].helper))
+                let taker = ranked[min(declines, ranked.count - 1)].helper
+
+                // A named rate gets haggled over. Whoever picks the job up
+                // answers the number rather than silently working for it.
+                if let negotiation {
+                    switch Negotiation.response(
+                        to: negotiation.customerFacingRate, helper: taker, negotiation: negotiation
+                    ) {
+                    case .accept:
+                        continuation.yield(.accepted(taker))
+                    case .counter(let rate):
+                        continuation.yield(.countered(taker, rate: rate))
+                    case .walkAway:
+                        // Everybody left would want more than this too.
+                        continuation.yield(.declined(taker))
+                        continuation.yield(.failed)
+                    }
+                } else {
+                    continuation.yield(.accepted(taker))
+                }
                 continuation.finish()
             }
         }

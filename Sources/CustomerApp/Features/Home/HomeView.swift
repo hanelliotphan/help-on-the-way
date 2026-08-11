@@ -75,7 +75,14 @@ struct HomeView: View {
 
     private func liveBanner(_ job: Job) -> some View {
         Button {
-            session.trackingJobID = job.id
+            // A job still out for bids belongs on the matching screen — that's
+            // where the search, and any counter-offer, actually lives. Tracking
+            // has nothing to draw until somebody has accepted.
+            if job.status == .searching {
+                session.matchingJobID = job.id
+            } else {
+                session.trackingJobID = job.id
+            }
         } label: {
             Card(spacing: 12, background: Palette.accent) {
                 HStack(spacing: 10) {
