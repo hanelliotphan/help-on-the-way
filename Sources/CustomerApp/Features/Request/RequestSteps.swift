@@ -368,7 +368,6 @@ struct TimingStep: View {
     let demand: DemandIndex
 
     @State private var day: Date = Calendar.current.startOfDay(for: Date())
-    @State private var part: Scheduling.DayPart = .morning
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -383,14 +382,12 @@ struct TimingStep: View {
         }
         .onAppear {
             day = Calendar.current.startOfDay(for: draft.scheduledStart)
-            part = Scheduling.DayPart.containing(draft.scheduledStart)
         }
-        .onChange(of: draft.minutes) { _, _ in
-            // A longer job can empty the part that's on screen; slide to one
-            // that still fits rather than showing an empty grid.
-            if partSlots.isEmpty, let fallback = firstAvailablePart(on: day) {
-                withAnimation(.snappy) { select(part: fallback) }
-            }
+        .onChange(of: draft.scheduledStart) { _, newStart in
+            // `RequestDraft.setMinutes` slides the start when a longer job no
+            // longer fits; the day rail has to follow it.
+            let startOfDay = Calendar.current.startOfDay(for: newStart)
+            if !Calendar.current.isDate(startOfDay, inSameDayAs: day) { day = startOfDay }
         }
     }
 
@@ -495,50 +492,17 @@ struct TimingStep: View {
         Scheduling.slots(on: day, minutes: draft.billableMinutes, now: session.now)
     }
 
-    private var availability: [Scheduling.DayPart: Int] {
-        Scheduling.availability(on: day, minutes: draft.billableMinutes, now: session.now)
-    }
-
-    private var partSlots: [Date] {
-        Scheduling.slots(on: day, minutes: draft.billableMinutes, now: session.now, in: part)
-    }
-
     private var scheduledPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             dayRail
 
             Card(spacing: 11) {
-                partPicker
-
-                if partSlots.isEmpty {
-                    Text(slots.isEmpty
-                         ? "Nothing left on \(Format.day(day, now: session.now).lowercased()) that fits a \(Format.duration(minutes: draft.billableMinutes)) job."
-                         : "No \(part.title.lowercased()) slots left. Try another part of the day.")
+                if slots.isEmpty {
+                    Text("Nothing left on \(Format.day(day, now: session.now).lowercased()) that fits a \(Format.duration(minutes: draft.billableMinutes)) job.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                    // Four across keeps a part of day to two or three rows.
-                    LazyVGrid(columns: Array(repeating: GridItem(spacing: 7), count: 4), spacing: 7) {
-                        ForEach(partSlots, id: \.self) { slot in
-                            let selected = slot == draft.scheduledStart
-                            Button {
-                                draft.scheduledStart = slot
-                            } label: {
-                                Text(Format.shortTime(slot))
-                                    .font(.footnote.weight(.semibold))
-                                    .minimumScaleFactor(0.8)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 36)
-                                    .foregroundStyle(selected ? .white : Palette.planned)
-                                    .background(
-                                        selected ? Palette.planned : Palette.plannedSoft,
-                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                    timeDropdown
 
                     Divider()
 
@@ -555,6 +519,59 @@ struct TimingStep: View {
                     }
                 }
             }
+        }
+    }
+
+    /// One row that opens the day's start times.
+    ///
+    /// The times are still grouped morning / afternoon / evening, but as sections
+    /// *inside* the menu — a flat list of 27 half-hour entries is no nicer to
+    /// scroll than the grid of buttons this replaced.
+    private var timeDropdown: some View {
+        Menu {
+            ForEach(Scheduling.DayPart.allCases) { part in
+                let partSlots = Scheduling.slots(
+                    on: day, minutes: draft.billableMinutes, now: session.now, in: part
+                )
+                if !partSlots.isEmpty {
+                    Section(part.title) {
+                        ForEach(partSlots, id: \.self) { slot in
+                            Button {
+                                draft.scheduledStart = slot
+                            } label: {
+                                // The tick is drawn rather than relying on a
+                                // Picker, so the grouping and the checkmark can
+                                // coexist.
+                                if slot == draft.scheduledStart {
+                                    Label(Format.time(slot), systemImage: "checkmark")
+                                } else {
+                                    Text(Format.time(slot))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.badge.checkmark")
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.planned)
+                Text("Start time")
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Text(Format.time(draft.scheduledStart))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Palette.planned)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Palette.planned)
+            }
+            .padding(.horizontal, 13)
+            .frame(height: 46)
+            .frame(maxWidth: .infinity)
+            .background(Palette.plannedSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
@@ -586,57 +603,16 @@ struct TimingStep: View {
         }
     }
 
-    private var partPicker: some View {
-        HStack(spacing: 7) {
-            ForEach(Scheduling.DayPart.allCases) { candidate in
-                let count = availability[candidate] ?? 0
-                let selected = candidate == part
-                Button {
-                    withAnimation(.snappy) { select(part: candidate) }
-                } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: candidate.symbol)
-                            .font(.caption)
-                        Text(candidate.title)
-                            .font(.caption2.weight(.semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .foregroundStyle(selected ? .white : (count == 0 ? .secondary : Palette.planned))
-                    .background(
-                        selected ? Palette.planned : (count == 0 ? Color.secondary.opacity(0.1) : Palette.plannedSoft),
-                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(count == 0)
-            }
-        }
-    }
+    // MARK: Keeping the day and the chosen time in step
 
-    // MARK: Keeping day, part and slot in step
-
+    /// Moving to another day has to move the time too — the old slot belongs to
+    /// yesterday, and leaving it there would price a booking the dropdown isn't
+    /// showing.
     private func select(day newDay: Date) {
         day = newDay
-        guard let firstPart = firstAvailablePart(on: newDay) else { return }
-        select(part: firstPart)
-    }
-
-    private func select(part newPart: Scheduling.DayPart) {
-        part = newPart
-        // The selection always has to live inside the part on screen, or the
-        // footer would price a slot the customer can no longer see.
-        if let first = Scheduling.slots(on: day, minutes: draft.billableMinutes, now: session.now, in: newPart).first,
-           !newPart.contains(draft.scheduledStart) || !Calendar.current.isDate(draft.scheduledStart, inSameDayAs: day) {
-            draft.scheduledStart = first
-        }
-    }
-
-    private func firstAvailablePart(on someDay: Date) -> Scheduling.DayPart? {
-        let counts = Scheduling.availability(on: someDay, minutes: draft.billableMinutes, now: session.now)
-        return Scheduling.DayPart.allCases.first { (counts[$0] ?? 0) > 0 }
+        guard let first = Scheduling.slots(on: newDay, minutes: draft.billableMinutes, now: session.now).first
+        else { return }
+        draft.scheduledStart = first
     }
 
     private var helperPicker: some View {
