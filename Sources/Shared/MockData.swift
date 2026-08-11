@@ -14,7 +14,7 @@ enum MockData {
 
     static var profile: CustomerProfile {
         CustomerProfile(
-            name: "Han Phan",
+            name: "Han-Elliot Phan",
             phone: "(415) 555-0134",
             email: "hanelliotphan@gmail.com",
             creditBalance: .usd(15),

@@ -33,7 +33,7 @@ struct OnboardingView: View {
                     Text("Who are we sending help to?")
                         .font(.headline)
                     VStack(spacing: 10) {
-                        field(title: "Name", text: $name, placeholder: "Han Phan")
+                        field(title: "Name", text: $name, placeholder: "Han-Elliot Phan")
                         field(title: "Mobile", text: $phone, placeholder: "(415) 555-0134", keyboard: .phonePad)
                     }
                     Text("Used so your helper can reach you at the door. Nothing else.")
