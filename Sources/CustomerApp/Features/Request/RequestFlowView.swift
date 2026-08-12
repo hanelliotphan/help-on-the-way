@@ -25,7 +25,7 @@ struct RequestFlowView: View {
                         // The step question reads as a heading here rather than
                         // in the navigation bar, where the progress dots live.
                         Text(draft.step.title)
-                            .font(.system(size: 21, weight: .semibold))
+                            .font(.title2.weight(.bold))
 
                         switch draft.step {
                         case .category:
@@ -118,7 +118,7 @@ struct RequestFlowView: View {
             BigButton(
                 title: buttonTitle,
                 symbol: draft.isLastStep ? (draft.wantsInstant ? "bolt.fill" : "calendar.badge.checkmark") : "arrow.right",
-                tint: draft.isLastStep ? Palette.tint(for: draft.timing) : Palette.ink,
+                tint: draft.isLastStep ? Palette.tint(for: draft.timing) : Palette.accent,
                 isEnabled: draft.canAdvance(now: session.now)
             ) {
                 if draft.isLastStep {

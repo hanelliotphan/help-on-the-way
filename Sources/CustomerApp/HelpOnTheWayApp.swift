@@ -8,7 +8,7 @@ struct HelpOnTheWayApp: App {
         WindowGroup {
             RootView()
                 .environment(session)
-                .tint(Palette.ink)
+                .tint(Palette.accent)
         }
     }
 }

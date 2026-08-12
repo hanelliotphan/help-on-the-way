@@ -31,10 +31,7 @@ struct HomeView: View {
             .padding(.bottom, 28)
         }
         .background(Palette.canvas)
-        // Inline rather than a large title: a greeting is not worth a third of
-        // the first screen, and the categories should be visible on arrival.
         .navigationTitle(greeting)
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 addressMenu
@@ -167,144 +164,105 @@ struct HomeView: View {
 
     // MARK: Now vs later
 
-    /// Two rows in one card rather than two tinted tiles side by side. The
-    /// choice between now and later is a list of two options, and looks like it.
     private var modeChooser: some View {
-        VStack(spacing: 10) {
-            VStack(spacing: 0) {
-                modeRow(
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                modeCard(
                     title: "Get help now",
-                    detail: "Sent to every helper nearby at once",
+                    detail: "Someone comes straight over",
                     symbol: "bolt.fill",
                     tint: Palette.instant
                 ) { session.startRequest(instant: true) }
 
-                Divider().padding(.leading, 42)
-
-                modeRow(
-                    title: "Schedule for later",
-                    detail: "Pick a time, and the person",
-                    symbol: "calendar",
+                modeCard(
+                    title: "Schedule later",
+                    detail: "Pick a time and a person",
+                    symbol: "calendar.badge.clock",
                     tint: Palette.planned
                 ) { session.startRequest(instant: false) }
             }
-            .background(Palette.card, in: RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                    .strokeBorder(Palette.hairline, lineWidth: Metrics.hairlineWidth)
-            )
-
             demandStrip
         }
     }
 
-    private func modeRow(title: String, detail: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Palette.ink)
-                    Text(detail)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Palette.inkSoft)
-                }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Palette.inkFaint)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-        }
-        .buttonStyle(.plain)
-    }
-
     private func modeCard(title: String, detail: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 20)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.system(size: 14.5, weight: .semibold))
-                        .foregroundStyle(Palette.ink)
-                    Text(detail)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Palette.inkSoft)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack {
+                    Circle().fill(tint.opacity(0.16))
+                    Image(systemName: symbol)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(tint)
                 }
-                Spacer(minLength: 0)
+                .frame(width: 40, height: 40)
+
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .multilineTextAlignment(.leading)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-            .background(Palette.card, in: RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+            .padding(14)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                    .strokeBorder(Palette.hairline, lineWidth: Metrics.hairlineWidth)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(tint.opacity(0.28), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
     }
 
-    /// One line, no card. It's an ambient status note, not a control.
     private var demandStrip: some View {
         let demand = session.demand(for: .handyman, at: address.point)
-        return HStack(spacing: 6) {
-            Image(systemName: demand.isSurging ? "arrow.up.right" : "checkmark.circle")
-                .font(.system(size: 10, weight: .semibold))
+        return HStack(spacing: 8) {
+            Image(systemName: demand.isSurging ? "chart.line.uptrend.xyaxis" : "person.2.fill")
+                .font(.caption)
                 .foregroundStyle(demand.isSurging ? Palette.instant : Palette.success)
             Text(demand.blurb)
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.inkSoft)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(address.oneLine)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
                 .lineLimit(1)
-            Spacer(minLength: 0)
-            // The address used to sit on this line and both halves ended up
-            // truncated. The toolbar already names the place, so it goes.
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: Categories
 
     private var categories: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "What needs doing?")
-            // Four across, monochrome, no rate on the tile — the rate belongs in
-            // the quote, not on a launcher.
-            LazyVGrid(columns: Array(repeating: GridItem(spacing: 8), count: 4), spacing: 8) {
+            SectionHeader(title: "What needs doing?", detail: "Tap a category to start a request")
+            LazyVGrid(columns: Array(repeating: GridItem(spacing: 10), count: 3), spacing: 10) {
                 ForEach(HelpCategory.allCases) { category in
                     Button {
                         session.startRequest(category: category, instant: category.supportsInstant)
                     } label: {
-                        VStack(spacing: 6) {
+                        VStack(spacing: 7) {
                             Image(systemName: category.symbol)
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundStyle(Palette.ink)
-                                .frame(height: 20)
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(Palette.accent)
+                                .frame(height: 24)
                             Text(category.shortTitle)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Palette.inkSoft)
+                                .font(.caption.weight(.semibold))
                                 .multilineTextAlignment(.center)
                                 .lineLimit(2)
-                                .minimumScaleFactor(0.8)
+                                .minimumScaleFactor(0.85)
+                            Text(category.defaultHourlyRate.shortCurrency + "/hr")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 68)
-                        .background(Palette.card, in: RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous)
-                                .strokeBorder(Palette.hairline, lineWidth: Metrics.hairlineWidth)
-                        )
+                        .padding(.vertical, 12)
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -394,11 +352,7 @@ struct HomeView: View {
                         // Stretches to whatever the helper cards come out at,
                         // now that their height is driven by content.
                         .frame(maxHeight: .infinity)
-                        .background(Palette.card, in: RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                                .strokeBorder(Palette.hairline, lineWidth: Metrics.hairlineWidth)
-                        )
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -443,11 +397,7 @@ struct HomeView: View {
         // frame — stopped short, leaving the rate sitting outside the card.
         // Every line here is capped at one, so the cards still match.
         .frame(width: 150, alignment: .topLeading)
-        .background(Palette.card, in: RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                .strokeBorder(Palette.hairline, lineWidth: Metrics.hairlineWidth)
-        )
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: Rebook

@@ -90,23 +90,21 @@ struct MainTabs: View {
         @Bindable var session = session
 
         TabView(selection: $session.selectedTab) {
-            // Outline glyphs and plain nouns. A waving hand and a pair of speech
-            // bubbles read as a toy; this is the vocabulary every booking app uses.
             NavigationStack { HomeView() }
-                .tabItem { Label("Home", systemImage: "house") }
+                .tabItem { Label("Help", systemImage: "hand.wave.fill") }
                 .tag(RootTab.home)
 
             NavigationStack { ActivityView() }
-                .tabItem { Label("Activity", systemImage: "clock") }
+                .tabItem { Label("Activity", systemImage: "list.bullet.rectangle.portrait") }
                 .tag(RootTab.activity)
 
             NavigationStack { MessagesView() }
-                .tabItem { Label("Messages", systemImage: "message") }
+                .tabItem { Label("Messages", systemImage: "bubble.left.and.bubble.right.fill") }
                 .badge(session.unreadCount)
                 .tag(RootTab.messages)
 
             NavigationStack { ProfileView() }
-                .tabItem { Label("Account", systemImage: "person") }
+                .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag(RootTab.profile)
         }
     }
