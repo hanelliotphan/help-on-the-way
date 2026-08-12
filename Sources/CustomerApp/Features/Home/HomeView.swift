@@ -390,8 +390,15 @@ struct HomeView: View {
                             Text("Browse all")
                                 .font(.caption.weight(.semibold))
                         }
-                        .frame(width: 96, height: 148)
-                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .frame(width: 96)
+                        // Stretches to whatever the helper cards come out at,
+                        // now that their height is driven by content.
+                        .frame(maxHeight: .infinity)
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                                .strokeBorder(Palette.hairline, lineWidth: Metrics.hairlineWidth)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -425,15 +432,22 @@ struct HomeView: View {
             Text(match.helper.skills.prefix(2).map(\.shortTitle).joined(separator: " · "))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Spacer(minLength: 0)
+                .lineLimit(1)
             Text(Format.rate(match.helper.hourlyRate))
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Palette.accent)
         }
         .padding(12)
-        .frame(width: 150, height: 148, alignment: .topLeading)
-        .background(Palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // Width is fixed, height is not. Pinning a height *after* padding meant
+        // taller content simply overflowed it, and the background — sized to the
+        // frame — stopped short, leaving the rate sitting outside the card.
+        // Every line here is capped at one, so the cards still match.
+        .frame(width: 150, alignment: .topLeading)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .strokeBorder(Palette.hairline, lineWidth: Metrics.hairlineWidth)
+        )
     }
 
     // MARK: Rebook
