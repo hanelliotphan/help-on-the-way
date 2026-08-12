@@ -629,6 +629,51 @@ final class AppSession {
         tick()
     }
 
+    // MARK: Closing the account
+
+    var deletionBlockers: [AccountDeletion.Blocker] {
+        AccountDeletion.blockers(in: jobs, now: now)
+    }
+
+    /// Erases the account and everything belonging to it.
+    ///
+    /// Genuinely destructive: the store file goes, the attached photos go, and
+    /// what's left is what a fresh install looks like. Refused outright while a
+    /// helper is mid-job or holding a booked slot — see `AccountDeletion`.
+    @discardableResult
+    func deleteAccount() -> Bool {
+        guard AccountDeletion.canDelete(jobs: jobs, now: now) else { return false }
+
+        PhotoStore.shared.wipe()
+        Persistence.wipe()
+
+        jobs = []
+        profile = CustomerProfile()
+        paymentMethods = []
+        // One address survives as a demo concession: there's no sign-up flow to
+        // ask for one, and every request needs somewhere to send a helper. It's
+        // the only thing here that a real deletion wouldn't leave behind.
+        addresses = [MockData.addresses[0]]
+        matching = [:]
+        matchingJobID = nil
+        trackingJobID = nil
+        ratingJobID = nil
+        draft = nil
+        hasOnboarded = false
+
+        // Written rather than left to the debounce: the point of pressing the
+        // button is that the data is gone now, not in half a second.
+        lastRevision = SharedStore.mutate { disk in
+            disk.hasOnboarded = false
+            disk.profile = CustomerProfile()
+            disk.jobs = []
+            disk.paymentMethods = []
+            disk.addresses = [MockData.addresses[0]]
+        }.revision
+
+        return true
+    }
+
     func resetDemo() {
         jobs = MockData.seedJobs()
         profile = MockData.profile

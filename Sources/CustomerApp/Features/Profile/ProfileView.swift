@@ -152,6 +152,17 @@ struct ProfileView: View {
 
             Section {
                 NavigationLink {
+                    DeleteAccountView()
+                } label: {
+                    Label("Delete account", systemImage: "trash")
+                        .foregroundStyle(Palette.danger)
+                }
+            } footer: {
+                Text("Erases everything on this device. There's no undo.")
+            }
+
+            Section {
+                NavigationLink {
                     DemoToolsView()
                 } label: {
                     Label("Demo tools", systemImage: "hammer.circle")
