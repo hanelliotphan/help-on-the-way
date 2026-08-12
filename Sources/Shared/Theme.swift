@@ -1,31 +1,75 @@
 import SwiftUI
 
+/// Spacing and corner radii, in one place.
+///
+/// Everything used to be an 18-point rounded rectangle with 16 points of
+/// padding, which at this density reads like a template rather than a product.
+/// Tighter radii and less air let more of the screen carry information.
+enum Metrics {
+    static let cardRadius: CGFloat = 12
+    static let controlRadius: CGFloat = 10
+    static let tileRadius: CGFloat = 10
+    static let cardPadding: CGFloat = 14
+    static let gutter: CGFloat = 16
+    static let controlHeight: CGFloat = 48
+    static let hairlineWidth: CGFloat = 1
+}
+
 enum Palette {
-    /// The request blue. Anything that moves a booking forward wears it.
-    static let accent = Color(red: 0.16, green: 0.36, blue: 0.96)
-    static let accentSoft = Color(red: 0.16, green: 0.36, blue: 0.96).opacity(0.12)
 
-    /// "Now" is amber everywhere; "Later" is teal everywhere. The two timing
-    /// modes are the spine of the app, so they get colours of their own and
-    /// never trade them.
-    static let instant = Color(red: 0.95, green: 0.55, blue: 0.08)
-    static let instantSoft = Color(red: 0.95, green: 0.55, blue: 0.08).opacity(0.15)
-    static let planned = Color(red: 0.04, green: 0.60, blue: 0.55)
-    static let plannedSoft = Color(red: 0.04, green: 0.60, blue: 0.55).opacity(0.14)
+    // MARK: Neutrals
+    //
+    // The app is monochrome first. Ink carries primary actions and primary text;
+    // colour is reserved for things that genuinely need to signal.
 
-    static let success = Color(red: 0.11, green: 0.60, blue: 0.35)
-    static let successSoft = Color(red: 0.11, green: 0.60, blue: 0.35).opacity(0.14)
-    static let danger = Color(red: 0.81, green: 0.22, blue: 0.22)
-    static let dangerSoft = Color(red: 0.81, green: 0.22, blue: 0.22).opacity(0.13)
+    /// Primary text, and the fill on primary buttons.
+    static let ink = dynamic(light: 0x11151B, dark: 0xF2F4F7)
+    /// Secondary text. Sits at roughly 4.6:1 on canvas, so it stays readable.
+    static let inkSoft = dynamic(light: 0x5A6472, dark: 0x99A2AF)
+    static let inkFaint = dynamic(light: 0x8A93A1, dark: 0x6E7784)
+
+    static let canvas = dynamic(light: 0xF6F7F9, dark: 0x0B0D10)
+    static let card = dynamic(light: 0xFFFFFF, dark: 0x161A20)
+    static let hairline = dynamic(light: 0xE3E7ED, dark: 0x272C34)
+    /// Text fields and other inset controls.
+    static let fill = dynamic(light: 0xF1F3F6, dark: 0x1E232A)
+
+    // MARK: One accent
+
+    /// Used for links, selection and emphasis — not for every button. Primary
+    /// actions wear `ink`, which is what stops the UI looking like a demo.
+    static let accent = dynamic(light: 0x0B57D0, dark: 0x86AFFF)
+    static let accentSoft = dynamic(light: 0xEBF1FD, dark: 0x18243A)
+
+    // MARK: Timing signals
+    //
+    // "Now" is warm and "Later" is cool everywhere, and they never trade — but
+    // muted, because a booking screen shouldn't glow.
+
+    static let instant = dynamic(light: 0x92500A, dark: 0xDDA35A)
+    static let instantSoft = dynamic(light: 0xFBF2E5, dark: 0x2A2114)
+    static let planned = dynamic(light: 0x0A6A61, dark: 0x63BDB3)
+    static let plannedSoft = dynamic(light: 0xE7F3F1, dark: 0x102420)
+
+    static let success = dynamic(light: 0x116843, dark: 0x6FCB98)
+    static let successSoft = dynamic(light: 0xE8F3EC, dark: 0x0E2318)
+    static let danger = dynamic(light: 0xB0231A, dark: 0xF08B80)
+    static let dangerSoft = dynamic(light: 0xFCEBE9, dark: 0x2A1513)
 
     /// The helper app runs on its own accent, so one glance at a screenshot
     /// tells you which of the two apps you're looking at.
-    static let helper = Color(red: 0.07, green: 0.44, blue: 0.37)
-    static let helperSoft = Color(red: 0.07, green: 0.44, blue: 0.37).opacity(0.13)
+    static let helper = dynamic(light: 0x1A4D35, dark: 0x74C69B)
+    static let helperSoft = dynamic(light: 0xEAF2ED, dark: 0x11251A)
 
-    static let card = Color(uiColor: .secondarySystemGroupedBackground)
-    static let canvas = Color(uiColor: .systemGroupedBackground)
-    static let hairline = Color(uiColor: .separator).opacity(0.6)
+    // MARK: Adaptive plumbing
+
+    /// Hex pairs rather than a single tint, so light and dark are each chosen
+    /// deliberately instead of one being a washed-out guess at the other.
+    private static func dynamic(light: UInt32, dark: UInt32) -> Color {
+        Color(uiColor: UIColor { traits in
+            UIColor(rgb: traits.userInterfaceStyle == .dark ? dark : light)
+        })
+    }
 
     static func tint(for timing: JobTiming) -> Color {
         timing.isInstant ? instant : planned
@@ -42,9 +86,21 @@ enum Palette {
     }
 
     /// Avatars are drawn, not downloaded. A stored hue keeps a given helper the
-    /// same colour on every screen they show up on.
+    /// same colour on every screen they show up on — desaturated, so a wall of
+    /// them reads as a directory rather than a bag of sweets.
     static func avatar(hue: Double) -> Color {
-        Color(hue: hue, saturation: 0.55, brightness: 0.72)
+        Color(hue: hue, saturation: 0.34, brightness: 0.52)
+    }
+}
+
+private extension UIColor {
+    convenience init(rgb: UInt32) {
+        self.init(
+            red: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
     }
 }
 

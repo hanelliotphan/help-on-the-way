@@ -3,16 +3,26 @@ import SwiftUI
 // MARK: - Containers
 
 struct Card<Content: View>: View {
-    var padding: CGFloat = 16
-    var spacing: CGFloat = 12
+    var padding: CGFloat = Metrics.cardPadding
+    var spacing: CGFloat = 10
     var background: Color = Palette.card
     @ViewBuilder var content: () -> Content
+
+    /// A hairline border rather than a drop shadow. Shadows on every card is
+    /// what makes a screen look like a stack of sticky notes.
+    private var isTinted: Bool { background != Palette.card }
 
     var body: some View {
         VStack(alignment: .leading, spacing: spacing, content: content)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(padding)
-            .background(background, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(background, in: RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+            .overlay {
+                if !isTinted {
+                    RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                        .strokeBorder(Palette.hairline, lineWidth: Metrics.hairlineWidth)
+                }
+            }
     }
 }
 
@@ -24,19 +34,20 @@ struct SectionHeader: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.headline)
+                    .font(.system(size: 15, weight: .semibold))
                 if let detail {
                     Text(detail)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Palette.inkSoft)
                 }
             }
             Spacer()
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(Palette.accent)
             }
         }
     }
@@ -44,32 +55,37 @@ struct SectionHeader: View {
 
 // MARK: - Buttons
 
+/// The primary action. Defaults to ink rather than a bright accent — a
+/// near-black button is what most booking apps use, and it stops every screen
+/// competing for attention with itself.
 struct BigButton: View {
     let title: String
     var symbol: String?
-    var tint: Color = Palette.accent
+    var tint: Color = Palette.ink
     var isLoading = false
     var isEnabled = true
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 if isLoading {
                     ProgressView()
-                        .tint(.white)
+                        .controlSize(.small)
+                        .tint(Palette.card)
                 } else if let symbol {
                     Image(systemName: symbol)
+                        .font(.footnote.weight(.semibold))
                 }
                 Text(title)
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .foregroundStyle(.white)
+            .frame(height: Metrics.controlHeight)
+            .foregroundStyle(Palette.card)
             .background(
-                (isEnabled ? tint : Color.gray.opacity(0.45)),
-                in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                (isEnabled ? tint : Palette.inkFaint.opacity(0.45)),
+                in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
             )
         }
         .buttonStyle(.plain)
@@ -77,22 +93,30 @@ struct BigButton: View {
     }
 }
 
+/// The secondary action: outlined, not a tinted slab.
 struct QuietButton: View {
     let title: String
     var symbol: String?
-    var tint: Color = Palette.accent
+    var tint: Color = Palette.ink
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if let symbol { Image(systemName: symbol) }
-                Text(title).font(.subheadline.weight(.semibold))
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.caption.weight(.semibold))
+                }
+                Text(title).font(.system(size: 15, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 46)
+            .frame(height: 44)
             .foregroundStyle(tint)
-            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+                    .strokeBorder(tint.opacity(0.28), lineWidth: Metrics.hairlineWidth)
+            }
         }
         .buttonStyle(.plain)
     }
@@ -100,25 +124,37 @@ struct QuietButton: View {
 
 // MARK: - Small parts
 
+/// A small status label. Outlined by default so a row of them reads as
+/// metadata; filled only when the state genuinely needs to shout.
 struct Chip: View {
     let text: String
     var symbol: String?
-    var tint: Color = Palette.accent
+    var tint: Color = Palette.inkSoft
     var filled = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3.5) {
             if let symbol {
                 Image(systemName: symbol)
-                    .font(.caption2.weight(.bold))
+                    .font(.system(size: 9, weight: .bold))
             }
             Text(text)
-                .font(.caption.weight(.semibold))
+                .font(.system(size: 11.5, weight: .semibold))
+                .lineLimit(1)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .foregroundStyle(filled ? .white : tint)
-        .background(filled ? tint : tint.opacity(0.13), in: Capsule())
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3.5)
+        .foregroundStyle(filled ? Palette.card : tint)
+        .background(
+            filled ? AnyShapeStyle(tint) : AnyShapeStyle(tint.opacity(0.08)),
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
+        .overlay {
+            if !filled {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(tint.opacity(0.22), lineWidth: Metrics.hairlineWidth)
+            }
+        }
     }
 }
 
@@ -138,8 +174,10 @@ struct TimingChip: View {
 
 struct Stars: View {
     let value: Double
-    var size: CGFloat = 11
-    var tint: Color = Color(red: 0.96, green: 0.71, blue: 0.12)
+    var size: CGFloat = 10
+    /// A deeper amber than the usual bright gold; a wall of ratings shouldn't
+    /// be the loudest thing on the screen.
+    var tint: Color = Color(red: 0.72, green: 0.53, blue: 0.10)
 
     var body: some View {
         HStack(spacing: 1.5) {

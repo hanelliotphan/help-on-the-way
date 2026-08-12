@@ -140,7 +140,7 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .yardWork: "leaf.fill"
         case .techHelp: "laptopcomputer"
         case .petCare: "pawprint.fill"
-        case .eventHelp: "party.popper.fill"
+        case .eventHelp: "person.3.fill"
         case .custom: "square.dashed"
         }
     }

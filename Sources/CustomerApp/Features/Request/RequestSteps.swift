@@ -29,41 +29,49 @@ struct CategoryStep: View {
 
     private func tile(_ category: HelpCategory) -> some View {
         let selected = draft.category == category
-        return VStack(alignment: .leading, spacing: 7) {
+        return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: category.symbol)
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(selected ? .white : Palette.accent)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(selected ? Palette.ink : Palette.inkSoft)
                 Spacer()
                 if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.white)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Palette.ink)
                 }
             }
             Text(category.title)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(selected ? .white : .primary)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Palette.ink)
                 .multilineTextAlignment(.leading)
             Text(category.tagline)
-                .font(.caption2)
-                .foregroundStyle(selected ? .white.opacity(0.85) : .secondary)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Palette.inkSoft)
                 .multilineTextAlignment(.leading)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 5) {
                 Text(Format.rate(category.defaultHourlyRate))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(selected ? .white : Palette.accent)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Palette.inkSoft)
                 if !category.supportsInstant {
-                    Chip(text: "Scheduled only", tint: selected ? .white : Palette.planned)
+                    Chip(text: "Scheduled", tint: Palette.planned)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(12)
         .background(
-            selected ? Palette.accent : Palette.card,
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            // Selection is a ring and a tick, not a slab of colour — nine
+            // saturated tiles on one screen is what made this look like a demo.
+            selected ? Palette.accentSoft : Palette.card,
+            in: RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .strokeBorder(selected ? Palette.ink : Palette.hairline,
+                              lineWidth: selected ? 1.5 : Metrics.hairlineWidth)
         )
     }
 }
@@ -172,9 +180,9 @@ struct DetailsStep: View {
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 38)
-                            .foregroundStyle(draft.minutes == option ? .white : Palette.accent)
+                            .foregroundStyle(draft.minutes == option ? Palette.card : Palette.ink)
                             .background(
-                                draft.minutes == option ? Palette.accent : Palette.accentSoft,
+                                draft.minutes == option ? Palette.ink : Palette.fill,
                                 in: RoundedRectangle(cornerRadius: 11, style: .continuous)
                             )
                     }
