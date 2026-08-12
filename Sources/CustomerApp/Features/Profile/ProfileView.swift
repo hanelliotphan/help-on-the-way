@@ -22,21 +22,27 @@ struct ProfileView: View {
     var body: some View {
         List {
             Section {
-                HStack(spacing: 14) {
-                    Avatar(initials: session.profile.initials, hue: 0.6, size: 58)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(session.profile.name.isEmpty ? "Add your name" : session.profile.name)
-                            .font(.headline)
-                        Text(session.profile.phone.isEmpty ? session.profile.email : session.profile.phone)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Text("Member since \(session.profile.joined.formatted(.dateTime.month(.abbreviated).year()))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                // The header is the natural place to tap to edit yourself, so it
+                // is a link now rather than a static block.
+                NavigationLink {
+                    PersonalDetailsView()
+                } label: {
+                    HStack(spacing: 14) {
+                        Avatar(initials: session.profile.initials, hue: 0.6, size: 58)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(session.profile.name.isEmpty ? "Add your name" : session.profile.name)
+                                .font(.headline)
+                            Text(session.profile.phone.isEmpty ? session.profile.email : session.profile.phone)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Text("Member since \(session.profile.joined.formatted(.dateTime.month(.abbreviated).year()))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
 
                 HStack(spacing: 0) {
                     StatBlock(value: "\(completed.count)", caption: "Jobs done", symbol: "checkmark.seal.fill")
@@ -86,6 +92,14 @@ struct ProfileView: View {
             }
 
             Section("Account") {
+                // Also listed explicitly: tapping a header for settings isn't
+                // obvious, and this is the row people go looking for.
+                NavigationLink {
+                    PersonalDetailsView()
+                } label: {
+                    Label("Personal details", systemImage: "person.text.rectangle")
+                }
+
                 NavigationLink {
                     AddressesView()
                 } label: {

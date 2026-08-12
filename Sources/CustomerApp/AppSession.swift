@@ -490,6 +490,19 @@ final class AppSession {
         scheduleSave()
     }
 
+    /// Saves edited personal details. Writes straight through to the shared
+    /// store, so the helper app sees the corrected name on its next read rather
+    /// than still asking for whoever you used to be.
+    func updateProfile(name: String, phone: String, email: String) {
+        let clean = ProfileEditing.normalised(name: name, phone: phone, email: email)
+        guard ProfileEditing.isValid(name: clean.name, phone: clean.phone, email: clean.email) else { return }
+        profile.name = clean.name
+        profile.phone = clean.phone
+        profile.email = clean.email
+        toast = "Details updated."
+        scheduleSave()
+    }
+
     func completeOnboarding(name: String, phone: String) {
         profile.name = name.isEmpty ? profile.name : name
         profile.phone = phone.isEmpty ? profile.phone : phone
