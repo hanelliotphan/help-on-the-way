@@ -229,9 +229,16 @@ struct AddressesView: View {
 struct PaymentMethodsView: View {
     @Environment(AppSession.self) private var session
 
+    @State private var isAdding = false
+
     var body: some View {
         List {
             Section {
+                if session.paymentMethods.isEmpty {
+                    Text("No cards on file.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(session.paymentMethods) { method in
                     Button {
                         session.makeDefault(paymentMethod: method.id)
@@ -256,12 +263,35 @@ struct PaymentMethodsView: View {
                         }
                     }
                     .foregroundStyle(.primary)
+                    .swipeActions {
+                        Button("Remove", role: .destructive) {
+                            session.removePaymentMethod(method.id)
+                        }
+                    }
                 }
+            } header: {
+                Text("Cards")
             } footer: {
-                Text("These are fixtures. The app has no field that accepts a real card number — adding one is deliberately out of scope.")
+                Text("Tap a card to make it the default; swipe to remove. Only the brand, last four digits and expiry are ever stored — there's no server behind this.")
+            }
+
+            Section {
+                Button {
+                    isAdding = true
+                } label: {
+                    Label("Add a card", systemImage: "plus.circle.fill")
+                }
             }
         }
         .navigationTitle("Payment")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { isAdding = true } label: { Image(systemName: "plus") }
+            }
+        }
+        .sheet(isPresented: $isAdding) {
+            AddPaymentMethodView()
+        }
     }
 }
 

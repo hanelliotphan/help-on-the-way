@@ -474,6 +474,34 @@ final class AppSession {
         scheduleSave()
     }
 
+    /// Adds a card. The caller hands over a `PaymentMethod` that `CardEntry` has
+    /// already reduced to a brand and four digits — the full number never
+    /// reaches this layer, so it can't be persisted by accident.
+    func addPaymentMethod(_ method: PaymentMethod) {
+        var added = method
+        // First card on the account has to be the default, whatever was asked for.
+        if paymentMethods.isEmpty { added.isDefault = true }
+        if added.isDefault {
+            for index in paymentMethods.indices { paymentMethods[index].isDefault = false }
+        }
+        paymentMethods.append(added)
+        toast = "\(added.label) added."
+        scheduleSave()
+    }
+
+    func removePaymentMethod(_ id: UUID) {
+        guard let index = paymentMethods.firstIndex(where: { $0.id == id }) else { return }
+        let wasDefault = paymentMethods[index].isDefault
+        let removed = paymentMethods.remove(at: index)
+        // Something has to be the default, or the review step has nothing to
+        // preselect and the customer gets asked to pick on every booking.
+        if wasDefault, !paymentMethods.isEmpty, !paymentMethods.contains(where: \.isDefault) {
+            paymentMethods[0].isDefault = true
+        }
+        toast = "\(removed.label) removed."
+        scheduleSave()
+    }
+
     func makeDefault(paymentMethod id: UUID) {
         for index in paymentMethods.indices {
             paymentMethods[index].isDefault = paymentMethods[index].id == id
