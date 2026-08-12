@@ -211,24 +211,36 @@ enum CardEntry {
 
     /// Turns validated entry into the only thing we're willing to keep.
     /// Returns nil rather than storing anything questionable.
+    ///
+    /// The cardholder name and billing address come in already validated by
+    /// `BillingEntry` — this checks they're present, because a card without them
+    /// isn't something a payment processor would accept.
     static func paymentMethod(
         number: String,
         expiry rawExpiry: String,
         cvc: String,
+        cardholderName: String,
+        billing: BillingAddress?,
         isDefault: Bool = false,
         now: Date = Date()
     ) -> PaymentMethod? {
         guard isValid(number: number, expiry: rawExpiry, cvc: cvc, now: now),
               let brand = Brand.detect(from: digits(in: number)),
-              let parsed = expiry(from: rawExpiry)
+              let parsed = expiry(from: rawExpiry),
+              let billing
         else { return nil }
+
+        let name = BillingEntry.normalisedName(cardholderName)
+        guard !name.isEmpty else { return nil }
 
         return PaymentMethod(
             brand: brand.displayName,
             last4: last4(of: number),
             expiry: expiryLabel(month: parsed.month, year: parsed.year),
             symbol: brand.symbol,
-            isDefault: isDefault
+            isDefault: isDefault,
+            cardholderName: name,
+            billing: billing
         )
     }
 }

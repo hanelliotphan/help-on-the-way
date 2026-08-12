@@ -253,6 +253,17 @@ struct PaymentMethodsView: View {
                                 Text(method.expiry == "—" ? "Wallet" : "Expires \(method.expiry)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                if let name = method.cardholderName, !name.isEmpty {
+                                    Text(name)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if let billing = method.billing {
+                                    Text(billing.oneLine)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(2)
+                                }
                             }
                             Spacer(minLength: 0)
                             if method.isDefault {
@@ -272,7 +283,7 @@ struct PaymentMethodsView: View {
             } header: {
                 Text("Cards")
             } footer: {
-                Text("Tap a card to make it the default; swipe to remove. Only the brand, last four digits and expiry are ever stored — there's no server behind this.")
+                Text("Tap a card to make it the default; swipe to remove. A card number is never stored — only the brand, last four digits, expiry, cardholder name and billing address.")
             }
 
             Section {

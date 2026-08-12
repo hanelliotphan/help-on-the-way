@@ -52,10 +52,29 @@ enum MockData {
     /// Card brand and last four only. The app has no field that takes a real
     /// card number, and adding one is deliberately out of scope.
     static var paymentMethods: [PaymentMethod] {
-        [
-            PaymentMethod(id: fixedID(201), brand: "Visa", last4: "4242", expiry: "07/29", symbol: "creditcard.fill", isDefault: true),
-            PaymentMethod(id: fixedID(202), brand: "Amex", last4: "7003", expiry: "11/27", symbol: "creditcard.fill"),
-            PaymentMethod(id: fixedID(203), brand: "Apple Pay", last4: "9910", expiry: "—", symbol: "apple.logo"),
+        // Billed to the home address, which is where most people's cards are
+        // registered. The wallet entry carries neither, the way a device token
+        // genuinely doesn't.
+        let home = BillingAddress(from: addresses[0])
+        return [
+            PaymentMethod(
+                id: fixedID(201), brand: "Visa", last4: "4242", expiry: "07/29",
+                symbol: "creditcard.fill", isDefault: true,
+                cardholderName: "Han-Elliot Phan", billing: home
+            ),
+            PaymentMethod(
+                id: fixedID(202), brand: "Amex", last4: "7003", expiry: "11/27",
+                symbol: "creditcard.fill",
+                cardholderName: "Han-Elliot Phan",
+                billing: BillingAddress(
+                    line1: "450 Brannan St", line2: "Floor 2",
+                    city: "San Francisco", state: "CA", postalCode: "94107"
+                )
+            ),
+            PaymentMethod(
+                id: fixedID(203), brand: "Apple Pay", last4: "9910", expiry: "—",
+                symbol: "apple.logo"
+            ),
         ]
     }
 

@@ -20,6 +20,61 @@ struct AddPaymentMethodView: View {
     @State private var makeDefault = false
     @FocusState private var focused: CardEntry.Field?
 
+    // MARK: Name and billing
+
+    @State private var cardholderName = ""
+    /// nil means "a different address", which reveals the manual fields.
+    @State private var savedAddressID: UUID?
+    @State private var line1 = ""
+    @State private var line2 = ""
+    @State private var city = ""
+    @State private var state = ""
+    @State private var postalCode = ""
+    @FocusState private var billingFocused: BillingEntry.Field?
+    @State private var hasPrefilled = false
+
+    private var usingSavedAddress: SavedAddress? {
+        session.addresses.first { $0.id == savedAddressID }
+    }
+
+    /// Either lifted from a saved address or typed in.
+    private var billing: BillingAddress? {
+        if let saved = usingSavedAddress { return BillingAddress(from: saved) }
+        guard billingIssues.isEmpty else { return nil }
+        return BillingEntry.billingAddress(
+            line1: line1, line2: line2, city: city, state: state, postalCode: postalCode
+        )
+    }
+
+    private var billingIssues: [BillingEntry.Issue] {
+        if let saved = usingSavedAddress {
+            // A saved address is already good enough to send a helper to, so only
+            // the name is still in question.
+            return BillingEntry.issues(
+                name: cardholderName, line1: saved.street, city: saved.city,
+                state: saved.state, postalCode: saved.postalCode
+            )
+        }
+        return BillingEntry.issues(
+            name: cardholderName, line1: line1, city: city, state: state, postalCode: postalCode
+        )
+    }
+
+    private func billingError(for field: BillingEntry.Field) -> BillingEntry.Issue? {
+        guard billingFocused != field else { return nil }
+        let raw = switch field {
+        case .name: cardholderName
+        case .line1: line1
+        case .line2: line2
+        case .city: city
+        case .state: state
+        case .postalCode: postalCode
+        }
+        // The name is required, so flag it blank; the rest only once touched.
+        if field != .name, raw.isEmpty { return nil }
+        return billingIssues.first { $0.field == field }
+    }
+
     private var number: String { numberDigits }
     private var expiry: String { expiryDigits }
     private var cvc: String { cvcDigits }
@@ -125,7 +180,48 @@ struct AddPaymentMethodView: View {
                 } header: {
                     Text("Card")
                 } footer: {
-                    Text("Only the brand, the last four digits and the expiry are saved. The number and security code are used to check the card and then discarded — there's no server behind this, so nothing is stored anywhere else.")
+                    Text("The number and security code are used to check the card and then discarded — only the brand, the last four digits and the expiry are kept, alongside the name and billing address below. There's no server behind this, so nothing leaves the device.")
+                }
+
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Name on card")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("Han-Elliot Phan", text: $cardholderName)
+                            .textInputAutocapitalization(.words)
+                            .autocorrectionDisabled()
+                            .focused($billingFocused, equals: .name)
+                        if let issue = billingError(for: .name) {
+                            Text(issue.message)
+                                .font(.caption)
+                                .foregroundStyle(Palette.danger)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                } header: {
+                    Text("Cardholder")
+                }
+
+                Section {
+                    Picker("Billing address", selection: $savedAddressID) {
+                        ForEach(session.addresses) { saved in
+                            Text(saved.label).tag(Optional(saved.id))
+                        }
+                        Text("A different address").tag(UUID?.none)
+                    }
+
+                    if let saved = usingSavedAddress {
+                        Text(saved.fullAddress)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        billingFields
+                    }
+                } header: {
+                    Text("Billing address")
+                } footer: {
+                    Text("Where the card is registered. Reusing a saved address copies it — editing that address later won't change what this card is billed to.")
                 }
 
                 Section {
@@ -139,6 +235,14 @@ struct AddPaymentMethodView: View {
             }
             .navigationTitle("Add a card")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                guard !hasPrefilled else { return }
+                hasPrefilled = true
+                // Sensible openers: the account holder's own name, and their
+                // home address, which is what a card is usually billed to.
+                cardholderName = session.profile.name
+                savedAddressID = session.addresses.first?.id
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -146,10 +250,74 @@ struct AddPaymentMethodView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Add") { save() }
                         .font(.headline)
-                        .disabled(!issues.isEmpty)
+                        .disabled(!issues.isEmpty || !billingIssues.isEmpty)
                 }
             }
         }
+    }
+
+    /// Manual entry, shown only when no saved address is selected.
+    @ViewBuilder
+    private var billingFields: some View {
+        billingField("Street", text: $line1, field: .line1, placeholder: "1042 Valencia St")
+        billingField("Apartment, unit (optional)", text: $line2, field: .line2, placeholder: "Apt 3B")
+        billingField("City", text: $city, field: .city, placeholder: "San Francisco")
+
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("State")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("CA", text: $state)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .focused($billingFocused, equals: .state)
+                    .onChange(of: state) { _, new in
+                        // Two letters is the whole field, so stop rather than
+                        // letting somebody type "California" and fail later.
+                        let capped = String(new.filter(\.isLetter).prefix(2)).uppercased()
+                        if capped != new { state = capped }
+                    }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ZIP")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("94110", text: $postalCode)
+                    .keyboardType(.numbersAndPunctuation)
+                    .focused($billingFocused, equals: .postalCode)
+            }
+        }
+        .padding(.vertical, 2)
+
+        if let issue = billingError(for: .state) ?? billingError(for: .postalCode) {
+            Text(issue.message)
+                .font(.caption)
+                .foregroundStyle(Palette.danger)
+        }
+    }
+
+    @ViewBuilder
+    private func billingField(
+        _ title: String,
+        text: Binding<String>,
+        field: BillingEntry.Field,
+        placeholder: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: text)
+                .textInputAutocapitalization(.words)
+                .focused($billingFocused, equals: field)
+            if let issue = billingError(for: field) {
+                Text(issue.message)
+                    .font(.caption)
+                    .foregroundStyle(Palette.danger)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder
@@ -166,6 +334,8 @@ struct AddPaymentMethodView: View {
             number: number,
             expiry: expiry,
             cvc: cvc,
+            cardholderName: cardholderName,
+            billing: billing,
             isDefault: makeDefault,
             now: session.now
         ) else { return }

@@ -13,6 +13,11 @@ struct CardEntryTests {
     private let amex = "378282246310005"
     private let discover = "6011111111111117"
 
+    /// A cardholder and billing address are required now, so the storage tests
+    /// need a valid pair to pass through.
+    private let holder = "Han-Elliot Phan"
+    private var testBilling: BillingAddress { BillingAddress(from: MockData.addresses[0]) }
+
     /// Fixed "now" so an expiry test doesn't start failing next January.
     private let now = Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 15))!
 
@@ -191,7 +196,7 @@ struct CardEntryTests {
 
     @Test("Only the brand, last four and expiry survive")
     func storesNothingSensitive() {
-        let method = CardEntry.paymentMethod(number: visa, expiry: "12/29", cvc: "123", now: now)
+        let method = CardEntry.paymentMethod(number: visa, expiry: "12/29", cvc: "123", cardholderName: holder, billing: testBilling, now: now)
         #expect(method?.brand == "Visa")
         #expect(method?.last4 == "4242")
         #expect(method?.expiry == "12/29")
@@ -208,15 +213,15 @@ struct CardEntryTests {
 
     @Test("An invalid card produces nothing at all")
     func invalidCardStoresNothing() {
-        #expect(CardEntry.paymentMethod(number: "4242424242424243", expiry: "12/29", cvc: "123", now: now) == nil)
-        #expect(CardEntry.paymentMethod(number: visa, expiry: "01/26", cvc: "123", now: now) == nil)
-        #expect(CardEntry.paymentMethod(number: visa, expiry: "12/29", cvc: "1", now: now) == nil)
+        #expect(CardEntry.paymentMethod(number: "4242424242424243", expiry: "12/29", cvc: "123", cardholderName: holder, billing: testBilling, now: now) == nil)
+        #expect(CardEntry.paymentMethod(number: visa, expiry: "01/26", cvc: "123", cardholderName: holder, billing: testBilling, now: now) == nil)
+        #expect(CardEntry.paymentMethod(number: visa, expiry: "12/29", cvc: "1", cardholderName: holder, billing: testBilling, now: now) == nil)
     }
 
     @Test("A formatted number stores the same way as a bare one")
     func formattingDoesNotChangeStorage() {
-        let bare = CardEntry.paymentMethod(number: visa, expiry: "12/29", cvc: "123", now: now)
-        let spaced = CardEntry.paymentMethod(number: "4242 4242 4242 4242", expiry: "12/29", cvc: "123", now: now)
+        let bare = CardEntry.paymentMethod(number: visa, expiry: "12/29", cvc: "123", cardholderName: holder, billing: testBilling, now: now)
+        let spaced = CardEntry.paymentMethod(number: "4242 4242 4242 4242", expiry: "12/29", cvc: "123", cardholderName: holder, billing: testBilling, now: now)
         #expect(bare?.last4 == spaced?.last4)
         #expect(bare?.brand == spaced?.brand)
     }

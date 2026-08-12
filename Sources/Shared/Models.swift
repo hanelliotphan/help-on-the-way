@@ -359,8 +359,59 @@ struct SavedAddress: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
-/// Display-only. The app never asks for or stores a real card number — the
-/// last four and the brand are all a demo needs to show a payment row.
+/// Where the card is registered.
+///
+/// Held as a copy rather than a pointer at a `SavedAddress` on purpose: a
+/// billing address is what the card was registered against at the time, and
+/// editing your home address later shouldn't silently rewrite it.
+struct BillingAddress: Codable, Hashable, Sendable {
+    var line1: String
+    var line2: String?
+    var city: String
+    var state: String
+    var postalCode: String
+    var country: String = "US"
+
+    var oneLine: String {
+        [line1, city, "\(state) \(postalCode)".trimmingCharacters(in: .whitespaces)]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
+
+    var formatted: String {
+        var lines = [line1]
+        if let line2, !line2.isEmpty { lines.append(line2) }
+        lines.append("\(city), \(state) \(postalCode)".trimmingCharacters(in: .whitespaces))
+        return lines.joined(separator: "\n")
+    }
+
+    /// Reuses a service address the customer already has on file.
+    init(from saved: SavedAddress) {
+        line1 = saved.street
+        line2 = saved.unit
+        city = saved.city
+        state = saved.state
+        postalCode = saved.postalCode
+        country = "US"
+    }
+
+    init(line1: String, line2: String? = nil, city: String, state: String, postalCode: String, country: String = "US") {
+        self.line1 = line1
+        self.line2 = line2
+        self.city = city
+        self.state = state
+        self.postalCode = postalCode
+        self.country = country
+    }
+}
+
+/// Display-only. The app never stores a card number — the brand and last four
+/// are all it keeps, alongside the name and billing address the card is
+/// registered to.
+///
+/// The two new fields are optional so a store written before they existed still
+/// decodes: a synthesised `Codable` throws on a missing non-optional key, and
+/// wiping somebody's saved cards to add a column would be a poor trade.
 struct PaymentMethod: Identifiable, Codable, Hashable, Sendable {
     var id: UUID = UUID()
     var brand: String
@@ -368,8 +419,23 @@ struct PaymentMethod: Identifiable, Codable, Hashable, Sendable {
     var expiry: String
     var symbol: String
     var isDefault: Bool = false
+    var cardholderName: String?
+    var billing: BillingAddress?
 
     var label: String { "\(brand) ·· \(last4)" }
+
+    /// What to show when a card predates these fields.
+    var holderLabel: String {
+        cardholderName?.isEmpty == false ? cardholderName! : "No name on file"
+    }
+
+    var billingSummary: String {
+        billing?.oneLine ?? "No billing address"
+    }
+
+    var isComplete: Bool {
+        cardholderName?.isEmpty == false && billing != nil
+    }
 }
 
 struct CustomerProfile: Codable, Hashable, Sendable {
