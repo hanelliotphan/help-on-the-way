@@ -9,6 +9,10 @@ struct AddressEditorView: View {
 
     let address: SavedAddress?
     let onSave: (SavedAddress) -> Void
+    /// Absent when adding — there's nothing to delete yet.
+    var onDelete: ((UUID) -> Void)?
+
+    @State private var confirmingDelete = false
 
     @State private var label = ""
     @State private var symbol = "mappin.circle.fill"
@@ -81,6 +85,35 @@ struct AddressEditorView: View {
                         .lineLimit(2...5)
                 } header: {
                     Text("Getting in")
+                }
+
+                // Editing an address is where people look for the way to get rid
+                // of it, so it's here as well as in the list.
+                if let existing = address, let onDelete {
+                    Section {
+                        Button(role: .destructive) {
+                            confirmingDelete = true
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Label("Delete address", systemImage: "trash")
+                                Spacer()
+                            }
+                        }
+                        .confirmationDialog(
+                            "Delete \"\(existing.label)\"?",
+                            isPresented: $confirmingDelete,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Delete", role: .destructive) {
+                                onDelete(existing.id)
+                                dismiss()
+                            }
+                            Button("Keep it", role: .cancel) {}
+                        } message: {
+                            Text("Past jobs keep their own copy of the address, so your history won't change.")
+                        }
+                    }
                 }
             }
             .navigationTitle(address == nil ? "New address" : "Edit address")

@@ -466,11 +466,13 @@ final class AppSession {
 
     func removeAddress(_ id: UUID) {
         // The last address is load-bearing — every request needs somewhere to go.
-        guard addresses.count > 1 else {
+        guard SavedItems.canRemove(address: id, from: addresses) else {
             toast = "Keep at least one address on file."
             return
         }
-        addresses.removeAll { $0.id == id }
+        let label = addresses.first { $0.id == id }?.label
+        addresses = SavedItems.removing(address: id, from: addresses)
+        toast = label.map { "\($0) removed." }
         scheduleSave()
     }
 
@@ -478,26 +480,15 @@ final class AppSession {
     /// already reduced to a brand and four digits — the full number never
     /// reaches this layer, so it can't be persisted by accident.
     func addPaymentMethod(_ method: PaymentMethod) {
-        var added = method
-        // First card on the account has to be the default, whatever was asked for.
-        if paymentMethods.isEmpty { added.isDefault = true }
-        if added.isDefault {
-            for index in paymentMethods.indices { paymentMethods[index].isDefault = false }
-        }
-        paymentMethods.append(added)
-        toast = "\(added.label) added."
+        paymentMethods = SavedItems.adding(method, to: paymentMethods)
+        toast = "\(method.label) added."
         scheduleSave()
     }
 
     func removePaymentMethod(_ id: UUID) {
-        guard let index = paymentMethods.firstIndex(where: { $0.id == id }) else { return }
-        let wasDefault = paymentMethods[index].isDefault
-        let removed = paymentMethods.remove(at: index)
-        // Something has to be the default, or the review step has nothing to
-        // preselect and the customer gets asked to pick on every booking.
-        if wasDefault, !paymentMethods.isEmpty, !paymentMethods.contains(where: \.isDefault) {
-            paymentMethods[0].isDefault = true
-        }
+        guard let removed = paymentMethods.first(where: { $0.id == id }) else { return }
+        // Promoting a new default when the old one goes is `SavedItems`' job.
+        paymentMethods = SavedItems.removing(paymentMethod: id, from: paymentMethods)
         toast = "\(removed.label) removed."
         scheduleSave()
     }

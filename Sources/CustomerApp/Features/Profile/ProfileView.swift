@@ -183,41 +183,53 @@ struct AddressesView: View {
     @State private var editing: SavedAddress?
     @State private var adding = false
 
+    private var isLastAddress: Bool { session.addresses.count <= 1 }
+
     var body: some View {
         List {
-            ForEach(session.addresses) { address in
-                Button {
-                    editing = address
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: address.symbol)
-                            .foregroundStyle(Palette.accent)
-                            .frame(width: 22)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(address.label)
-                                .font(.subheadline.weight(.semibold))
-                            Text(address.oneLine)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            if !address.accessNotes.isEmpty {
-                                Text(address.accessNotes)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
+            Section {
+                ForEach(session.addresses) { address in
+                    Button {
+                        editing = address
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: address.symbol)
+                                .foregroundStyle(Palette.accent)
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(address.label)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(address.oneLine)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if !address.accessNotes.isEmpty {
+                                    Text(address.accessNotes)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                }
                             }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.tertiary)
                         }
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.tertiary)
                     }
+                    .foregroundStyle(.primary)
+                    // The last one can't go: `removeAddress` refuses it, and a row
+                    // that animates away and springs back looks like a bug.
+                    .deleteDisabled(isLastAddress)
                 }
-                .foregroundStyle(.primary)
-                .swipeActions {
-                    Button("Delete", role: .destructive) {
-                        session.removeAddress(address.id)
-                    }
+                // `onDelete` rather than `swipeActions`: it gives the swipe *and*
+                // the red minus buttons under Edit. Swiping alone is invisible.
+                .onDelete { offsets in
+                    let ids = offsets.map { session.addresses[$0].id }
+                    for id in ids { session.removeAddress(id) }
                 }
+            } footer: {
+                Text(isLastAddress
+                     ? "Tap an address to edit it. Your last address can't be removed — every request needs somewhere to send a helper."
+                     : "Tap an address to edit it. Swipe a row, or tap Edit, to remove one.")
             }
         }
         .navigationTitle("Addresses")
@@ -225,9 +237,14 @@ struct AddressesView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { adding = true } label: { Image(systemName: "plus") }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                EditButton()
+            }
         }
         .sheet(item: $editing) { address in
-            AddressEditorView(address: address) { session.upsert($0) }
+            AddressEditorView(address: address) { session.upsert($0) } onDelete: { id in
+                session.removeAddress(id)
+            }
         }
         .sheet(isPresented: $adding) {
             AddressEditorView(address: nil) { session.upsert($0) }
@@ -285,16 +302,17 @@ struct PaymentMethodsView: View {
                         }
                     }
                     .foregroundStyle(.primary)
-                    .swipeActions {
-                        Button("Remove", role: .destructive) {
-                            session.removePaymentMethod(method.id)
-                        }
-                    }
+                }
+                // Gives the swipe *and* the red minus buttons under Edit, so
+                // removing a card isn't a gesture you have to already know about.
+                .onDelete { offsets in
+                    let ids = offsets.map { session.paymentMethods[$0].id }
+                    for id in ids { session.removePaymentMethod(id) }
                 }
             } header: {
                 Text("Cards")
             } footer: {
-                Text("Tap a card to make it the default; swipe to remove. A card number is never stored — only the brand, last four digits, expiry, cardholder name and billing address.")
+                Text("Tap a card to make it the default. Swipe a row, or tap Edit, to remove one. A card number is never stored — only the brand, last four digits, expiry, cardholder name and billing address.")
             }
 
             Section {
@@ -309,6 +327,9 @@ struct PaymentMethodsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { isAdding = true } label: { Image(systemName: "plus") }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if !session.paymentMethods.isEmpty { EditButton() }
             }
         }
         .sheet(isPresented: $isAdding) {
