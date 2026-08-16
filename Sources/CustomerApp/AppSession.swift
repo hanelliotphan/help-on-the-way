@@ -62,6 +62,9 @@ final class AppSession {
     /// Last revision of the shared document this app wrote or read. Anything
     /// higher on disk is the helper app's work, and gets adopted on the next tick.
     private var lastRevision = 0
+    /// Modification stamp of the store as of our last read, so an unchanged file
+    /// can be skipped without decoding it.
+    private var lastSeenStamp: Date?
 
     init(backend: DemoBackend? = nil, snapshot: StoreSnapshot? = Persistence.load()) {
         self.backend = backend ?? DemoBackend()
@@ -122,7 +125,9 @@ final class AppSession {
 
     /// Jobs worth a chat thread — anyone who has a helper attached.
     var threads: [Job] {
-        jobs.filter { $0.helper != nil && !$0.messages.isEmpty || ($0.helper != nil && $0.status.isLive) }
+        // Reads as a bug otherwise: the original leaned on `&&` binding tighter
+        // than `||` to mean the same thing.
+        jobs.filter { $0.helper != nil && (!$0.messages.isEmpty || $0.status.isLive) }
             .sorted { ($0.messages.last?.at ?? $0.createdAt) > ($1.messages.last?.at ?? $1.createdAt) }
     }
 
@@ -413,6 +418,14 @@ final class AppSession {
 
     // MARK: Messaging
 
+    /// Called when the customer opens a thread. Cheap no-op when there was
+    /// nothing new, so opening a read thread doesn't churn the shared store.
+    func markThreadRead(jobID: UUID) {
+        guard let index = index(of: jobID), jobs[index].unreadFromHelper > 0 else { return }
+        jobs[index].customerReadAt = Date()
+        scheduleSave()
+    }
+
     func send(_ text: String, jobID: UUID) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = index(of: jobID) else { return }
@@ -687,6 +700,12 @@ final class AppSession {
     /// Pulls in anything the helper app has written since our last read — an
     /// accepted job, a status the helper advanced, a completion.
     private func adoptExternalChanges() {
+        // Stat before decode. Nothing changes on the vast majority of ticks, and
+        // this turns those into a stat instead of parsing the whole store.
+        let stamp = Persistence.modifiedAt()
+        guard stamp != lastSeenStamp else { return }
+        lastSeenStamp = stamp
+
         guard let disk = Persistence.load(), disk.revision != lastRevision else { return }
         lastRevision = disk.revision
 

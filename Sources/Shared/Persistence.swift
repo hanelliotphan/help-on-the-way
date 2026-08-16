@@ -69,16 +69,31 @@ enum Persistence {
     /// changes what the app can actually demonstrate.
     static var isSharedStoreAvailable: Bool { sharedContainer != nil }
 
-    static var directory: URL {
+    /// Resolved once. This used to run `createDirectory` on every access, which
+    /// meant a filesystem call on each of the per-second reads below.
+    private static let folder: URL = {
         let base = sharedContainer
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL.temporaryDirectory
         let folder = base.appendingPathComponent("HelpOnTheWay", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
-    }
+    }()
 
-    static var fileURL: URL { directory.appendingPathComponent(filename) }
+    static var directory: URL { folder }
+
+    static var fileURL: URL { folder.appendingPathComponent(filename) }
+
+    /// When the store last changed on disk.
+    ///
+    /// Both apps poll for the other's writes once a second. Decoding 18KB of
+    /// JSON to discover the revision hasn't moved is the wrong way round — this
+    /// is a stat, and it lets the overwhelmingly common "nothing happened" case
+    /// cost almost nothing. The stamp comes off the file itself, so unlike a
+    /// cached revision it can't go stale relative to the contents.
+    static func modifiedAt() -> Date? {
+        (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
 
     private static var encoder: JSONEncoder {
         let encoder = JSONEncoder()

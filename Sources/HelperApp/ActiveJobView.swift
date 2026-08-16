@@ -302,8 +302,12 @@ struct HelperChatView: View {
                     }
                     .onChange(of: job.messages.count) { _, _ in
                         withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                        session.markThreadRead(jobID: jobID)
                     }
-                    .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+                    .onAppear {
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                        session.markThreadRead(jobID: jobID)
+                    }
                 }
                 composer
             }

@@ -31,6 +31,7 @@ final class HelperSession {
     let roster: [Helper] = MockData.helpers
 
     private var lastRevision = -1
+    private var lastSeenStamp: Date?
     @ObservationIgnored private nonisolated(unsafe) var ticker: Task<Void, Never>?
 
     private static let personaKey = "helper.persona.id"
@@ -88,6 +89,12 @@ final class HelperSession {
     // MARK: Reading the shared store
 
     private func reload(force: Bool = false) {
+        // Same stat-before-decode as the customer app: the helper app polls just
+        // as often and is idle just as much of the time.
+        let stamp = Persistence.modifiedAt()
+        if !force, stamp == lastSeenStamp { return }
+        lastSeenStamp = stamp
+
         guard let disk = Persistence.load() else { return }
         guard force || disk.revision != lastRevision else { return }
         lastRevision = disk.revision
@@ -176,12 +183,7 @@ final class HelperSession {
         // this helper's last message.
         return jobs
             .filter { $0.helper?.id == me.id }
-            .reduce(0) { total, job in
-                guard let lastMine = job.messages.last(where: { !$0.fromCustomer && !$0.isSystem })?.at else {
-                    return total + job.messages.filter(\.isFromCustomerHuman).count
-                }
-                return total + job.messages.filter { $0.isFromCustomerHuman && $0.at > lastMine }.count
-            }
+            .reduce(0) { $0 + $1.unreadFromCustomer }
     }
 
     // MARK: Taking work
@@ -328,6 +330,15 @@ final class HelperSession {
 
     // MARK: Messaging
 
+    /// Mirror of the customer's: opening a thread marks it read for this side only.
+    func markThreadRead(jobID: UUID) {
+        guard let job = jobs.first(where: { $0.id == jobID }), job.unreadFromCustomer > 0 else { return }
+        commit { snapshot in
+            guard let index = snapshot.jobs.firstIndex(where: { $0.id == jobID }) else { return }
+            snapshot.jobs[index].helperReadAt = Date()
+        }
+    }
+
     func send(_ text: String, jobID: UUID) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -347,8 +358,3 @@ final class HelperSession {
     }
 }
 
-private extension Message {
-    /// A message the customer actually typed, as opposed to a system line or the
-    /// helper's own send.
-    var isFromCustomerHuman: Bool { fromCustomer && !isSystem }
-}

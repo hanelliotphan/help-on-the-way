@@ -4,6 +4,8 @@ struct HomeView: View {
     @Environment(AppSession.self) private var session
 
     @State private var addressID: UUID?
+    @State private var cachedNearby: [HelperMatch] = []
+    @State private var cachedDemand: DemandIndex = .calm
 
     private var address: SavedAddress {
         session.addresses.first { $0.id == addressID } ?? session.homeAddress
@@ -13,7 +15,7 @@ struct HomeView: View {
         ScrollView {
             VStack(spacing: 18) {
                 ForEach(session.liveJobs) { job in
-                    liveBanner(job)
+                    LiveJobBanner(job: job)
                 }
                 ForEach(session.jobs.filter { $0.status == .unmatched }) { job in
                     unmatchedBanner(job)
@@ -38,11 +40,15 @@ struct HomeView: View {
             }
         }
         .onAppear { if addressID == nil { addressID = session.homeAddress.id } }
+        .task(id: address.id) { refreshNeighbourhood() }
     }
 
     private var greeting: String {
         let first = session.profile.name.split(separator: " ").first.map(String.init)
-        let hour = Calendar.current.component(.hour, from: session.now)
+        // Deliberately not `session.now`: this changes at hour boundaries, and
+        // observing the per-second clock for it would drag the whole screen —
+        // including the helper rail — into recomputing every tick.
+        let hour = Calendar.current.component(.hour, from: Date())
         let part = hour < 12 ? "Morning" : (hour < 18 ? "Afternoon" : "Evening")
         return first.map { "\(part), \($0)" } ?? part
     }
@@ -72,72 +78,6 @@ struct HomeView: View {
     }
 
     // MARK: Live work
-
-    private func liveBanner(_ job: Job) -> some View {
-        Button {
-            // A job still out for bids belongs on the matching screen — that's
-            // where the search, and any counter-offer, actually lives. Tracking
-            // has nothing to draw until somebody has accepted.
-            if job.status == .searching {
-                session.matchingJobID = job.id
-            } else {
-                session.trackingJobID = job.id
-            }
-        } label: {
-            Card(spacing: 12, background: Palette.accent) {
-                HStack(spacing: 10) {
-                    Image(systemName: job.status.symbol)
-                        .font(.subheadline.weight(.bold))
-                    Text(job.status.title.uppercased())
-                        .font(.caption.weight(.bold))
-                        .tracking(0.6)
-                    Spacer()
-                    if let plan = job.dispatch, job.status == .enRoute || job.status == .accepted {
-                        Text(Format.eta(minutes: plan.etaMinutes(at: session.now)))
-                            .font(.caption.weight(.semibold))
-                    } else if let plan = job.dispatch, job.status == .inProgress {
-                        Text("\(Format.duration(minutes: plan.workRemainingMinutes(at: session.now))) left")
-                            .font(.caption.weight(.semibold))
-                    }
-                }
-                .foregroundStyle(.white.opacity(0.9))
-
-                HStack(spacing: 12) {
-                    if let helper = job.helper {
-                        Avatar(helper: helper, size: 44, ring: true)
-                    } else {
-                        ZStack {
-                            Circle().fill(.white.opacity(0.22)).frame(width: 44, height: 44)
-                            Image(systemName: "dot.radiowaves.left.and.right")
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(job.helper?.displayName ?? "Asking nearby helpers")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                        Text(job.title)
-                            .font(.footnote)
-                            .foregroundStyle(.white.opacity(0.85))
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 4)
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-
-                if let plan = job.dispatch, job.status == .enRoute {
-                    ProgressView(value: plan.travelFraction(at: session.now))
-                        .tint(.white)
-                } else if let plan = job.dispatch, job.status == .inProgress {
-                    ProgressView(value: plan.workFraction(at: session.now))
-                        .tint(.white)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
 
     private func unmatchedBanner(_ job: Job) -> some View {
         Card(spacing: 10) {
@@ -217,7 +157,7 @@ struct HomeView: View {
     }
 
     private var demandStrip: some View {
-        let demand = session.demand(for: .handyman, at: address.point)
+        let demand = cachedDemand
         return HStack(spacing: 8) {
             Image(systemName: demand.isSurging ? "chart.line.uptrend.xyaxis" : "person.2.fill")
                 .font(.caption)
@@ -314,6 +254,14 @@ struct HomeView: View {
 
     // MARK: Nearby helpers
 
+    /// Recomputed when the address changes, not on every body pass. Each call
+    /// below allocates a pair of `CLLocation`s per helper for the distance, and
+    /// `travelMinutes` allocates two more — cheap once, wasteful at 1Hz.
+    private func refreshNeighbourhood() {
+        cachedNearby = uniqueNearby
+        cachedDemand = session.demand(for: .handyman, at: address.point)
+    }
+
     private var nearbyMatches: [HelperMatch] {
         Matching.candidates(
             for: .handyman, near: address.point, in: session.backend.roster,
@@ -326,10 +274,15 @@ struct HomeView: View {
         )
     }
 
-    private var nearby: some View {
-        let unique = nearbyMatches.reduce(into: [HelperMatch]()) { result, match in
+    /// The two sweeps above overlap, so the rail is deduplicated by helper.
+    private var uniqueNearby: [HelperMatch] {
+        nearbyMatches.reduce(into: [HelperMatch]()) { result, match in
             if !result.contains(where: { $0.id == match.id }) { result.append(match) }
         }
+    }
+
+    private var nearby: some View {
+        let unique = cachedNearby
         return VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Helpers near \(address.label)", detail: "\(unique.count) available today")
             ScrollView(.horizontal, showsIndicators: false) {
@@ -420,7 +373,7 @@ struct HomeView: View {
                                 Text(job.title)
                                     .font(.subheadline.weight(.semibold))
                                     .lineLimit(1)
-                                Text("\(job.helper?.displayName ?? "") · \(Format.ago(job.createdAt, now: session.now))")
+                                Text("\(job.helper?.displayName ?? "") · \(Format.ago(job.createdAt, now: Date()))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -450,5 +403,81 @@ struct HomeView: View {
         draft.chosenHelper = job.helper
         draft.paymentMethod = session.defaultPaymentMethod
         session.draft = draft
+    }
+}
+
+/// Pulled out of `HomeView` so the per-second clock only invalidates this.
+///
+/// Reading `session.now` anywhere in the home screen's own body made the whole
+/// screen — including two `Matching.candidates` sweeps and a demand calculation —
+/// recompute every tick. The ETA belongs to the banner, so the dependency does too.
+struct LiveJobBanner: View {
+    @Environment(AppSession.self) private var session
+    let job: Job
+
+    var body: some View {
+    Button {
+        // A job still out for bids belongs on the matching screen — that's
+        // where the search, and any counter-offer, actually lives. Tracking
+        // has nothing to draw until somebody has accepted.
+        if job.status == .searching {
+            session.matchingJobID = job.id
+        } else {
+            session.trackingJobID = job.id
+        }
+    } label: {
+        Card(spacing: 12, background: Palette.accent) {
+            HStack(spacing: 10) {
+                Image(systemName: job.status.symbol)
+                    .font(.subheadline.weight(.bold))
+                Text(job.status.title.uppercased())
+                    .font(.caption.weight(.bold))
+                    .tracking(0.6)
+                Spacer()
+                if let plan = job.dispatch, job.status == .enRoute || job.status == .accepted {
+                    Text(Format.eta(minutes: plan.etaMinutes(at: session.now)))
+                        .font(.caption.weight(.semibold))
+                } else if let plan = job.dispatch, job.status == .inProgress {
+                    Text("\(Format.duration(minutes: plan.workRemainingMinutes(at: session.now))) left")
+                        .font(.caption.weight(.semibold))
+                }
+            }
+            .foregroundStyle(.white.opacity(0.9))
+
+            HStack(spacing: 12) {
+                if let helper = job.helper {
+                    Avatar(helper: helper, size: 44, ring: true)
+                } else {
+                    ZStack {
+                        Circle().fill(.white.opacity(0.22)).frame(width: 44, height: 44)
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .foregroundStyle(.white)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(job.helper?.displayName ?? "Asking nearby helpers")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Text(job.title)
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+
+            if let plan = job.dispatch, job.status == .enRoute {
+                ProgressView(value: plan.travelFraction(at: session.now))
+                    .tint(.white)
+            } else if let plan = job.dispatch, job.status == .inProgress {
+                ProgressView(value: plan.workFraction(at: session.now))
+                    .tint(.white)
+            }
+        }
+    }
+    .buttonStyle(.plain)
     }
 }

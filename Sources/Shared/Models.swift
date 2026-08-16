@@ -646,6 +646,9 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
     var events: [JobEvent] = []
     var messages: [Message] = []
     var rating: JobRating?
+    /// When each side last opened the thread. Nil means never.
+    var customerReadAt: Date?
+    var helperReadAt: Date?
     var paymentMethodID: UUID?
     /// Filled in at completion — a job that ran long is charged for what it ran.
     var billedMinutes: Int?
@@ -668,13 +671,36 @@ struct Job: Identifiable, Codable, Hashable, Sendable {
         timing.scheduledStart ?? createdAt
     }
 
+    /// Unread counts, one per side.
+    ///
+    /// Read state is a timestamp rather than a flag per message: a thread is
+    /// read up to the moment you looked at it. Each side gets its own stamp —
+    /// the customer opening the chat says nothing about whether the helper has
+    /// seen it, and they share one `Job` in the store.
+    ///
+    /// Replying also counts as reading, so answering without scrolling to the
+    /// top doesn't leave a badge behind.
     var unreadFromHelper: Int {
-        // The demo has no read receipts; anything after the customer's last
-        // message counts as unread, which is close enough to feel right.
-        guard let lastMine = messages.last(where: { $0.fromCustomer })?.at else {
-            return messages.filter { !$0.fromCustomer && !$0.isSystem }.count
-        }
-        return messages.filter { !$0.fromCustomer && !$0.isSystem && $0.at > lastMine }.count
+        Job.unread(in: messages, fromCustomer: false, seenAt: customerReadAt, repliedBy: true)
+    }
+
+    var unreadFromCustomer: Int {
+        Job.unread(in: messages, fromCustomer: true, seenAt: helperReadAt, repliedBy: false)
+    }
+
+    private static func unread(
+        in messages: [Message],
+        fromCustomer wantCustomer: Bool,
+        seenAt: Date?,
+        repliedBy myReplyIsFromCustomer: Bool
+    ) -> Int {
+        let myLastReply = messages.last { $0.fromCustomer == myReplyIsFromCustomer && !$0.isSystem }?.at
+        let seenUpTo = [seenAt, myLastReply].compactMap { $0 }.max()
+        return messages.filter { message in
+            message.fromCustomer == wantCustomer
+                && !message.isSystem
+                && (seenUpTo.map { message.at > $0 } ?? true)
+        }.count
     }
 
     var amountDue: Decimal { finalTotal ?? quote.total }

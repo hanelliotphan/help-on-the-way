@@ -97,8 +97,13 @@ struct ChatView: View {
                     }
                     .onChange(of: job.messages.count) { _, _ in
                         withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                        // Anything arriving while the thread is open is read.
+                        session.markThreadRead(jobID: jobID)
                     }
-                    .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+                    .onAppear {
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                        session.markThreadRead(jobID: jobID)
+                    }
                 }
 
                 composer(job)
