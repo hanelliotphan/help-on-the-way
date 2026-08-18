@@ -216,7 +216,7 @@ struct HelperAccountView: View {
 
     var body: some View {
         List {
-            if let me = session.me {
+            if let me = session.mePublic {
                 Section {
                     HStack(spacing: 14) {
                         Avatar(helper: me, size: 58)
@@ -243,6 +243,39 @@ struct HelperAccountView: View {
                         StatBlock(value: Format.rate(me.hourlyRate), caption: "your rate", symbol: "banknote.fill")
                     }
                     .padding(.vertical, 6)
+                }
+
+                if !me.reviews.isEmpty {
+                    Section {
+                        ForEach(me.reviews.prefix(4)) { review in
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack(spacing: 7) {
+                                    Text(review.author)
+                                        .font(.footnote.weight(.semibold))
+                                    Stars(value: Double(review.stars), size: 9)
+                                    Spacer()
+                                    Text(review.ageLabel(now: session.now))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if !review.body.isEmpty {
+                                    Text(review.body)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if !review.complimentList.isEmpty {
+                                    Text(review.complimentList.joined(separator: " · "))
+                                        .font(.caption2)
+                                        .foregroundStyle(Palette.success)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    } header: {
+                        Text("What customers said")
+                    } footer: {
+                        Text("Your rating is worked out from these against your job history, so one review doesn't swing it.")
+                    }
                 }
 
                 Section("What you take on") {

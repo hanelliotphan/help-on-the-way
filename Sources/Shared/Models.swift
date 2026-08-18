@@ -289,7 +289,20 @@ struct Review: Identifiable, Codable, Hashable, Sendable {
     var stars: Int
     var body: String
     var category: HelpCategory
+    /// How long ago, for the seeded fixtures that have no real date.
     var daysAgo: Int
+    /// Set on reviews a customer actually wrote. Both of the fields below are
+    /// optional so reviews stored before they existed still decode — a schema
+    /// bump here would wipe every account's history to add a nicety.
+    var postedAt: Date?
+    var compliments: [String]?
+
+    var complimentList: [String] { compliments ?? [] }
+
+    /// Real date when we have one, otherwise the fixture's relative age.
+    func ageLabel(now: Date = Date()) -> String {
+        postedAt.map { Format.ago($0, now: now) } ?? Format.agoInDays(daysAgo)
+    }
 }
 
 struct Helper: Identifiable, Codable, Hashable, Sendable {

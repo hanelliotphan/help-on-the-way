@@ -7,6 +7,12 @@ struct HelperProfileView: View {
     let helper: Helper
     var draft: RequestDraft?
 
+    /// The passed-in `Helper` may be a snapshot taken when a job was booked.
+    /// This is who they are now, reviews and rating included.
+    private var current: Helper {
+        session.backend.roster.first { $0.id == helper.id } ?? helper
+    }
+
     private var jobsWithThisHelper: [Job] {
         session.jobs.filter { $0.helper?.id == helper.id && $0.status == .completed }
     }
@@ -52,10 +58,10 @@ struct HelperProfileView: View {
                     .multilineTextAlignment(.center)
             }
             HStack(spacing: 6) {
-                Stars(value: helper.rating, size: 13)
-                Text(Format.rating(helper.rating))
+                Stars(value: current.rating, size: 13)
+                Text(Format.rating(current.rating))
                     .font(.subheadline.weight(.bold))
-                Text("· \(Format.jobsCompleted(helper.jobsCompleted))")
+                Text("· \(Format.jobsCompleted(current.jobsCompleted))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -179,28 +185,36 @@ struct HelperProfileView: View {
                 Text("Reviews")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text("\(helper.reviews.count) shown")
+                Text("\(current.reviews.count) shown")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            ForEach(helper.reviews) { review in
+            ForEach(current.reviews) { review in
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 7) {
                         Text(review.author)
                             .font(.footnote.weight(.semibold))
                         Stars(value: Double(review.stars), size: 9)
                         Spacer()
-                        Text(Format.agoInDays(review.daysAgo))
+                        Text(review.ageLabel(now: session.now))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    Text(review.body)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Chip(text: review.category.shortTitle, symbol: review.category.symbol, tint: .secondary)
+                    // A rating with compliments but no comment is still a review.
+                    if !review.body.isEmpty {
+                        Text(review.body)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack(spacing: 6) {
+                        Chip(text: review.category.shortTitle, symbol: review.category.symbol, tint: .secondary)
+                        if !review.complimentList.isEmpty {
+                            Chip(text: review.complimentList.joined(separator: " · "), tint: Palette.success)
+                        }
+                    }
                 }
-                if review.id != helper.reviews.last?.id { Divider() }
+                if review.id != current.reviews.last?.id { Divider() }
             }
         }
     }

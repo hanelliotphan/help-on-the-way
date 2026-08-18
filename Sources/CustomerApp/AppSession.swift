@@ -59,6 +59,10 @@ final class AppSession {
 
     // MARK: Lifecycle
 
+    /// Reviews customers have written, mirrored from the store so the backend's
+    /// roster can be rebuilt from them.
+    private var publishedReviews: [UUID: [Review]] = [:]
+
     /// Last revision of the shared document this app wrote or read. Anything
     /// higher on disk is the helper app's work, and gets adopted on the next tick.
     private var lastRevision = 0
@@ -76,6 +80,7 @@ final class AppSession {
             jobs = snapshot.jobs
             timeScale = snapshot.timeScale
             lastRevision = snapshot.revision
+            publishedReviews = snapshot.reviewsByHelper
         } else {
             hasOnboarded = false
             profile = MockData.profile
@@ -84,6 +89,7 @@ final class AppSession {
             jobs = MockData.seedJobs()
             timeScale = Dispatch.demoTimeScale
         }
+        self.backend.apply(publishedReviews: publishedReviews)
         startTicker()
     }
 
@@ -451,6 +457,19 @@ final class AppSession {
             rated.finalTotal = (rated.finalTotal ?? rated.quote.total) + rating.tip
         }
         jobs[index] = rated
+        // The rating screen says the review is shared on the helper's profile.
+        // This is what makes that true: it lands in the store, the backend's
+        // roster picks it up, and their average is rederived from it.
+        if let helperID = rated.helper?.id,
+           let review = Reputation.review(
+               from: rating,
+               author: profile.name,
+               category: rated.category,
+               at: Date()
+           ) {
+            publishedReviews[helperID, default: []].append(review)
+            backend.apply(publishedReviews: publishedReviews)
+        }
         if rating.stars >= 5, let helperID = jobs[index].helper?.id {
             profile.favoriteHelperIDs.insert(helperID)
         }
@@ -658,6 +677,8 @@ final class AppSession {
         // ask for one, and every request needs somewhere to send a helper. It's
         // the only thing here that a real deletion wouldn't leave behind.
         addresses = [MockData.addresses[0]]
+        publishedReviews = [:]
+        backend.apply(publishedReviews: [:])
         matching = [:]
         matchingJobID = nil
         trackingJobID = nil
@@ -673,6 +694,8 @@ final class AppSession {
             disk.jobs = []
             disk.paymentMethods = []
             disk.addresses = [MockData.addresses[0]]
+            // The reviews this account wrote go with it.
+            disk.publishedReviews = [:]
         }.revision
 
         return true
@@ -717,6 +740,8 @@ final class AppSession {
         profile = disk.profile
         addresses = disk.addresses
         paymentMethods = disk.paymentMethods
+        publishedReviews = disk.reviewsByHelper
+        backend.apply(publishedReviews: publishedReviews)
 
         for job in jobs where before[job.id] != job.status {
             // The request we were watching just got taken by a real helper.
@@ -774,6 +799,7 @@ final class AppSession {
         let paymentMethods = paymentMethods
         let jobs = jobs
         let timeScale = timeScale
+        let reviews = publishedReviews
 
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(450))
@@ -785,6 +811,7 @@ final class AppSession {
                 disk.paymentMethods = paymentMethods
                 disk.jobs = jobs
                 disk.timeScale = timeScale
+                disk.publishedReviews = reviews
             }
             self?.lastRevision = written.revision
         }

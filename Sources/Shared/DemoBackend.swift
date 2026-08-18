@@ -31,14 +31,27 @@ enum MatchingUpdate: Sendable {
 /// and nothing above it changes.
 @MainActor
 final class DemoBackend {
-    private(set) var roster: [Helper]
+    /// The seeded roster. `roster` layers customer reviews over this.
+    private let baseRoster: [Helper]
+    /// Reviews customers have written, pushed in from the store.
+    private var publishedReviews: [UUID: [Review]] = [:]
+
+    /// Helpers as they should appear right now — seeded record plus whatever
+    /// customers have said since, with ratings rederived.
+    var roster: [Helper] { Reputation.roster(baseRoster, published: publishedReviews) }
+
+    func apply(publishedReviews: [UUID: [Review]]) {
+        self.publishedReviews = publishedReviews
+    }
+
+    func helper(_ id: UUID) -> Helper? { roster.first { $0.id == id } }
 
     /// Demo switches, driven from Profile → Demo tools.
     var simulateNoHelpers = false
     var latencyScale: Double = 1
 
     init(roster: [Helper] = MockData.helpers) {
-        self.roster = roster
+        self.baseRoster = roster
     }
 
     // MARK: Demand

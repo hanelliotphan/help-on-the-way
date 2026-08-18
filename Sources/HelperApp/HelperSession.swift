@@ -28,7 +28,19 @@ final class HelperSession {
     /// Offers this helper has passed on. Local: another helper should still see them.
     var declinedJobIDs: Set<UUID> = []
 
-    let roster: [Helper] = MockData.helpers
+    /// Seeded roster. `roster` layers customer reviews over it, the same way
+    /// the customer app's backend does.
+    private let baseRoster: [Helper] = MockData.helpers
+    private var publishedReviews: [UUID: [Review]] = [:]
+
+    var roster: [Helper] { Reputation.roster(baseRoster, published: publishedReviews) }
+
+    /// This helper as customers now see them — rating rederived, newest reviews
+    /// first. `me` stays the signed-in identity; this is the public face of it.
+    var mePublic: Helper? {
+        guard let me else { return nil }
+        return roster.first { $0.id == me.id } ?? me
+    }
 
     private var lastRevision = -1
     private var lastSeenStamp: Date?
@@ -100,6 +112,7 @@ final class HelperSession {
         lastRevision = disk.revision
         jobs = disk.jobs
         customer = disk.profile
+        publishedReviews = disk.reviewsByHelper
     }
 
     func tick() {

@@ -30,6 +30,16 @@ struct StoreSnapshot: Codable {
     /// Informational only — when each helper last had the app open.
     var helperLastSeen: [UUID: Date] = [:]
 
+    /// Reviews customers have actually written, keyed by helper.
+    ///
+    /// Kept apart from the roster so the shared document carries only what
+    /// somebody typed, and `MockData` stays a seed rather than mutable state.
+    /// Optional so a store written before reviews existed still decodes instead
+    /// of being wiped for the sake of a new key.
+    var publishedReviews: [UUID: [Review]]?
+
+    var reviewsByHelper: [UUID: [Review]] { publishedReviews ?? [:] }
+
     func onlineHelperIDs(now: Date = Date()) -> Set<UUID> { onlineHelpers }
 
     /// True when a real helper app is on shift and able to take this job. The
