@@ -25,7 +25,10 @@ struct CustomCategoryTests {
         // The category grid is ordered by allCases; "something else" belongs
         // after the things that are actually named.
         #expect(HelpCategory.allCases.last == .custom)
-        #expect(HelpCategory.allCases.count == 10)
+        // Deliberately not a count: the catalogue is meant to grow, and a magic
+        // number here just breaks every time it does. What matters is that
+        // "something else" stays at the end.
+        #expect(HelpCategory.allCases.dropLast().allSatisfy { $0 != .custom })
     }
 
     @Test("Custom is not a listed skill, but everybody is eligible for it")

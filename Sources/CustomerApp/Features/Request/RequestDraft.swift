@@ -69,7 +69,7 @@ final class RequestDraft {
             self.offeredRate = Negotiation.suggestedOpening(for: category, in: MockData.helpers)
         }
         self.wantsInstant = wantsInstant && category.supportsInstant
-        self.scheduledStart = Scheduling.nextSlot(minutes: category.minimumMinutes, now: now)
+        self.scheduledStart = Scheduling.nextSlot(minutes: category.minimumMinutes, now: now, leadMinutes: Vetting.minimumLeadMinutes(for: category))
         self.step = step
     }
 
@@ -127,8 +127,13 @@ final class RequestDraft {
         )
     }
 
+    /// Care work asks for more notice than an hour — see `Vetting`.
+    var leadMinutes: Int { Vetting.minimumLeadMinutes(for: category) }
+
     func schedulingIssue(now: Date = Date()) -> Scheduling.Issue? {
-        wantsInstant ? nil : Scheduling.issue(start: scheduledStart, minutes: billableMinutes, now: now)
+        wantsInstant ? nil : Scheduling.issue(
+            start: scheduledStart, minutes: billableMinutes, now: now, leadMinutes: leadMinutes
+        )
     }
 
     // MARK: Step machine
@@ -169,15 +174,15 @@ final class RequestDraft {
             ? Negotiation.suggestedOpening(for: newValue, in: MockData.helpers)
             : nil
         if !newValue.supportsInstant { wantsInstant = false }
-        scheduledStart = Scheduling.nextSlot(minutes: minutes, now: now)
+        scheduledStart = Scheduling.nextSlot(minutes: minutes, now: now, leadMinutes: leadMinutes)
     }
 
     func setMinutes(_ newValue: Int, now: Date = Date()) {
         minutes = max(15, newValue)
         // A longer job can push the chosen slot past closing time; slide it to
         // the next one that fits rather than letting the review step fail.
-        if !wantsInstant, Scheduling.issue(start: scheduledStart, minutes: billableMinutes, now: now) != nil {
-            scheduledStart = Scheduling.nextSlot(minutes: billableMinutes, now: now)
+        if !wantsInstant, Scheduling.issue(start: scheduledStart, minutes: billableMinutes, now: now, leadMinutes: leadMinutes) != nil {
+            scheduledStart = Scheduling.nextSlot(minutes: billableMinutes, now: now, leadMinutes: leadMinutes)
         }
     }
 
@@ -185,7 +190,7 @@ final class RequestDraft {
         guard newValue == false || category.supportsInstant else { return }
         wantsInstant = newValue
         if !newValue {
-            scheduledStart = Scheduling.nextSlot(minutes: billableMinutes, now: now)
+            scheduledStart = Scheduling.nextSlot(minutes: billableMinutes, now: now, leadMinutes: leadMinutes)
         }
     }
 

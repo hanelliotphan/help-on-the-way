@@ -35,7 +35,10 @@ enum Matching {
         limit: Int? = nil
     ) -> [HelperMatch] {
         let matches = helpers
-            .filter { $0.handles(category) }
+            // Skilled *and* cleared. For childcare, tutoring and senior care
+            // this is what stops an uncredentialed helper being offered the job
+            // at all, rather than merely ranking them lower.
+            .filter { Vetting.canTake($0, category) }
             .map { helper -> HelperMatch in
                 let miles = helper.basePoint.miles(to: point)
                 let isFavorite = favorites.contains(helper.id)

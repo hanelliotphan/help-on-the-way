@@ -54,7 +54,9 @@ struct CategoryStep: View {
                 Text(Format.rate(category.defaultHourlyRate))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(selected ? .white : Palette.accent)
-                if !category.supportsInstant {
+                if category.trustTier == .enhanced {
+                    Chip(text: "Vetted", symbol: "checkmark.shield.fill", tint: selected ? .white : Palette.success)
+                } else if !category.supportsInstant {
                     Chip(text: "Scheduled only", tint: selected ? .white : Palette.planned)
                 }
             }
@@ -118,6 +120,26 @@ struct DetailsStep: View {
             rateCard
             photosCard
 
+            if let note = draft.category.vettingNote {
+                Card(spacing: 9) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .foregroundStyle(Palette.success)
+                        Text("Extra checks for this work")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let assurance = Vetting.assurance(for: draft.category) {
+                        Text(assurance)
+                            .font(.caption)
+                            .foregroundStyle(Palette.success)
+                    }
+                }
+            }
+
             Card(spacing: 9) {
                 Text("Usually included")
                     .font(.subheadline.weight(.semibold))
@@ -146,6 +168,10 @@ struct DetailsStep: View {
         case .techHelp: "New router — Wi-Fi doesn't reach the back bedroom."
         case .petCare: "Two walks and a feed. Friendly beagle, pulls a bit."
         case .eventHelp: "Sixty covers, tables and chairs to set and strike."
+        case .babysitting: "Two kids, 4 and 7. Dinner's in the fridge, bed at half seven."
+        case .tutoring: "Year 10 maths, struggling with algebra. Mocks in January."
+        case .seniorCare: "Company and a hot lunch, plus the Thursday supermarket run."
+        case .mealPrep: "Five dinners for two. No pork, and one of us hates coriander."
         // Nothing to hint at — the notes *are* the job description here, so the
         // placeholder asks for the two things a helper can't guess.
         case .custom: "What needs doing, and anything you'd want to know before saying yes to it."
@@ -595,11 +621,11 @@ struct TimingStep: View {
     }
 
     private var days: [Date] {
-        Scheduling.days(minutes: draft.billableMinutes, now: session.now)
+        Scheduling.days(minutes: draft.billableMinutes, now: session.now, leadMinutes: draft.leadMinutes)
     }
 
     private var slots: [Date] {
-        Scheduling.slots(on: day, minutes: draft.billableMinutes, now: session.now)
+        Scheduling.slots(on: day, minutes: draft.billableMinutes, now: session.now, leadMinutes: draft.leadMinutes)
     }
 
     private var scheduledPanel: some View {

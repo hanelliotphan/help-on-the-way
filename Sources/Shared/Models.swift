@@ -90,6 +90,15 @@ extension Decimal {
 /// The kinds of help a customer can ask for. Rates and minimums are per
 /// category because a two-hour deep clean and a ten-minute TV mount can't
 /// share one price sheet.
+/// How much vetting a kind of work demands.
+///
+/// The difference between somebody assembling a wardrobe and somebody minding a
+/// child is not a difference of degree, and the app shouldn't treat it as one.
+enum TrustTier: String, Codable, Hashable, Sendable {
+    case standard
+    case enhanced
+}
+
 enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
     case cleaning
     case handyman
@@ -100,6 +109,10 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
     case techHelp
     case petCare
     case eventHelp
+    case babysitting
+    case tutoring
+    case seniorCare
+    case mealPrep
     /// Anything the catalogue doesn't cover. Has no standard rate, so the
     /// customer names one and it gets negotiated from there.
     case custom
@@ -117,6 +130,10 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: "Tech Help"
         case .petCare: "Pet Care"
         case .eventHelp: "Event Help"
+        case .babysitting: "Babysitting"
+        case .tutoring: "Tutoring"
+        case .seniorCare: "Senior Care"
+        case .mealPrep: "Meal Prep"
         case .custom: "Custom"
         }
     }
@@ -126,6 +143,8 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .assembly: "Assembly"
         case .delivery: "Delivery"
         case .eventHelp: "Events"
+        case .babysitting: "Sitting"
+        case .seniorCare: "Seniors"
         default: title
         }
     }
@@ -141,6 +160,10 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: "laptopcomputer"
         case .petCare: "pawprint.fill"
         case .eventHelp: "party.popper.fill"
+        case .babysitting: "figure.and.child.holdinghands"
+        case .tutoring: "book.fill"
+        case .seniorCare: "figure.2.arms.open"
+        case .mealPrep: "fork.knife"
         case .custom: "square.dashed"
         }
     }
@@ -156,6 +179,10 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: "Wi-Fi, TVs, printers, new-device setup"
         case .petCare: "Walks, drop-in visits, vet runs"
         case .eventHelp: "Setup, serving, cleanup crews"
+        case .babysitting: "Evenings, school runs, date nights"
+        case .tutoring: "Maths, reading, languages, exam prep"
+        case .seniorCare: "Company, errands, appointments"
+        case .mealPrep: "A week of cooking, done in one go"
         case .custom: "Describe it and name your rate"
         }
     }
@@ -171,6 +198,10 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: .usd(55)
         case .petCare: .usd(38)
         case .eventHelp: .usd(42)
+        case .babysitting: .usd(32)
+        case .tutoring: .usd(45)
+        case .seniorCare: .usd(34)
+        case .mealPrep: .usd(40)
         // No going rate to quote — this is only a starting point for the
         // conversation, and the customer is expected to change it.
         case .custom: .usd(50)
@@ -184,6 +215,8 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .cleaning, .moving: 120
         case .yardWork: 90
         case .eventHelp: 180
+        // Nobody books a sitter or a carer for an hour; the block is the shift.
+        case .babysitting, .seniorCare, .mealPrep: 180
         default: 60
         }
     }
@@ -194,13 +227,44 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .moving: [120, 180, 240, 360]
         case .yardWork: [90, 120, 180, 240]
         case .eventHelp: [180, 240, 300, 360]
+        case .babysitting, .seniorCare: [180, 240, 300, 480]
+        case .mealPrep: [180, 240, 300]
+        case .tutoring: [60, 90, 120, 180]
         default: [60, 90, 120, 180]
         }
     }
 
+    /// How much vetting this work needs before somebody is let through the door.
+    var trustTier: TrustTier {
+        switch self {
+        case .babysitting, .tutoring, .seniorCare: .enhanced
+        default: .standard
+        }
+    }
+
     /// Crews for a Saturday party get staffed days ahead, not dispatched in
-    /// eleven minutes — so this category is scheduled-only.
-    var supportsInstant: Bool { self != .eventHelp }
+    /// eleven minutes. Care work is scheduled-only for a different and better
+    /// reason: auto-assigning a stranger to mind a child in eleven minutes is
+    /// not a thing this app should be able to do. Those bookings go through the
+    /// calendar, where the customer sees who they're getting first.
+    var supportsInstant: Bool {
+        self != .eventHelp && trustTier == .standard
+    }
+
+    /// Shown wherever the category is chosen, so the extra vetting is visible
+    /// rather than implied.
+    var vettingNote: String? {
+        guard trustTier == .enhanced else { return nil }
+        return switch self {
+        case .babysitting:
+            "Sitters carry an enhanced check and current paediatric first aid. Booked ahead so you can read their profile first."
+        case .tutoring:
+            "Tutors carry an enhanced check and a verified teaching qualification."
+        case .seniorCare:
+            "Carers carry an enhanced check and a care certificate. Booked ahead so you can choose who comes."
+        default: nil
+        }
+    }
 
     /// Shown on the details step so people know what they're buying.
     var checklist: [String] {
@@ -223,6 +287,14 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
             ["GPS-tracked walks with photos", "Food, water and litter", "Vet and groomer transport"]
         case .eventHelp:
             ["Tables, chairs and linens set", "Serving and bussing through the night", "Full teardown and haul-out"]
+        case .babysitting:
+            ["Enhanced check and paediatric first aid", "Meals, bath and bedtime as you set them", "A note on how the evening went"]
+        case .tutoring:
+            ["Enhanced check and a verified qualification", "Session plan matched to their syllabus", "A short write-up of what was covered"]
+        case .seniorCare:
+            ["Enhanced check and a care certificate", "Company, light housekeeping, meal help", "Errands and appointment transport"]
+        case .mealPrep:
+            ["Shopping list agreed in advance", "A week of meals cooked and portioned", "Kitchen left as it was found"]
         case .custom:
             ["Exactly what you write in the notes", "Tools and supplies as agreed", "Nothing assumed — spell it out"]
         }
@@ -240,6 +312,10 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .techHelp: "Set up a device"
         case .petCare: "Dog walk"
         case .eventHelp: "Event setup and teardown"
+        case .babysitting: "Evening babysitting"
+        case .tutoring: "Tutoring session"
+        case .seniorCare: "Companion visit"
+        case .mealPrep: "A week of meals"
         case .custom: "Something else"
         }
     }
@@ -255,6 +331,12 @@ enum HelperBadge: String, Codable, CaseIterable, Identifiable, Sendable {
     case insured
     case ownsTruck
     case suppliesIncluded
+    /// The care credentials. These aren't decoration — `Vetting` refuses to
+    /// offer a helper work with children or vulnerable adults without them.
+    case enhancedCheck
+    case paediatricFirstAid
+    case teachingCredential
+    case careCertified
 
     var id: String { rawValue }
 
@@ -267,6 +349,10 @@ enum HelperBadge: String, Codable, CaseIterable, Identifiable, Sendable {
         case .insured: "Insured"
         case .ownsTruck: "Has a truck"
         case .suppliesIncluded: "Brings supplies"
+        case .enhancedCheck: "Enhanced check"
+        case .paediatricFirstAid: "Paediatric first aid"
+        case .teachingCredential: "Qualified teacher"
+        case .careCertified: "Care certified"
         }
     }
 
@@ -279,6 +365,28 @@ enum HelperBadge: String, Codable, CaseIterable, Identifiable, Sendable {
         case .insured: "umbrella.fill"
         case .ownsTruck: "truck.box.fill"
         case .suppliesIncluded: "bag.fill"
+        case .enhancedCheck: "checkmark.shield.fill"
+        case .paediatricFirstAid: "cross.case.fill"
+        case .teachingCredential: "graduationcap.fill"
+        case .careCertified: "heart.text.square.fill"
+        }
+    }
+
+    /// What it actually means, for the profile screen. A badge nobody can
+    /// explain is a sticker.
+    var detail: String {
+        switch self {
+        case .backgroundChecked: "Identity and criminal record checked."
+        case .topRated: "Consistently rated near five stars."
+        case .quickResponder: "Usually answers within minutes."
+        case .licensed: "Holds a trade licence for this work."
+        case .insured: "Covered while working in your home."
+        case .ownsTruck: "Can move things that don't fit in a car."
+        case .suppliesIncluded: "Brings their own materials."
+        case .enhancedCheck: "Extended vetting for work with children and vulnerable adults."
+        case .paediatricFirstAid: "Current paediatric first aid and CPR certificate."
+        case .teachingCredential: "Verified teaching qualification."
+        case .careCertified: "Trained in personal and companion care."
         }
     }
 }

@@ -45,12 +45,17 @@ enum Scheduling {
         }
     }
 
-    static func issue(start: Date, minutes: Int, now: Date = Date()) -> Issue? {
+    /// - Parameter leadMinutes: how much notice this work needs. Defaults to the
+    ///   ordinary hour; care categories ask for more, via `Vetting`.
+    static func issue(
+        start: Date, minutes: Int, now: Date = Date(),
+        leadMinutes: Int = minimumLeadMinutes
+    ) -> Issue? {
         let calendar = Calendar.current
         if start < now { return .inThePast }
 
         let lead = start.timeIntervalSince(now) / 60
-        if lead < Double(minimumLeadMinutes) { return .tooSoon(minimumLeadMinutes: minimumLeadMinutes) }
+        if lead < Double(leadMinutes) { return .tooSoon(minimumLeadMinutes: leadMinutes) }
 
         // The horizon is the *end* of the fourteenth day, not this time of day
         // fourteen days out — otherwise the last day in the picker only offers
@@ -72,8 +77,11 @@ enum Scheduling {
         return nil
     }
 
-    static func isBookable(start: Date, minutes: Int, now: Date = Date()) -> Bool {
-        issue(start: start, minutes: minutes, now: now) == nil
+    static func isBookable(
+        start: Date, minutes: Int, now: Date = Date(),
+        leadMinutes: Int = minimumLeadMinutes
+    ) -> Bool {
+        issue(start: start, minutes: minutes, now: now, leadMinutes: leadMinutes) == nil
     }
 
     /// Morning / afternoon / evening.
@@ -124,29 +132,40 @@ enum Scheduling {
     }
 
     /// The bookable slots on a day, narrowed to one part of it.
-    static func slots(on day: Date, minutes: Int, now: Date = Date(), in part: DayPart) -> [Date] {
-        slots(on: day, minutes: minutes, now: now).filter { part.contains($0) }
+    static func slots(
+        on day: Date, minutes: Int, now: Date = Date(), in part: DayPart,
+        leadMinutes: Int = minimumLeadMinutes
+    ) -> [Date] {
+        slots(on: day, minutes: minutes, now: now, leadMinutes: leadMinutes).filter { part.contains($0) }
     }
 
     /// Which parts of a day still have room, and how much — drives the picker's
     /// segment labels and lets an empty part be disabled rather than silently
     /// showing nothing.
-    static func availability(on day: Date, minutes: Int, now: Date = Date()) -> [DayPart: Int] {
-        let open = slots(on: day, minutes: minutes, now: now)
+    static func availability(
+        on day: Date, minutes: Int, now: Date = Date(),
+        leadMinutes: Int = minimumLeadMinutes
+    ) -> [DayPart: Int] {
+        let open = slots(on: day, minutes: minutes, now: now, leadMinutes: leadMinutes)
         return DayPart.allCases.reduce(into: [:]) { result, part in
             result[part] = open.filter { part.contains($0) }.count
         }
     }
 
     /// Every half-hour start on a given day that could actually take the job.
-    static func slots(on day: Date, minutes: Int, now: Date = Date()) -> [Date] {
+    static func slots(
+        on day: Date, minutes: Int, now: Date = Date(),
+        leadMinutes: Int = minimumLeadMinutes
+    ) -> [Date] {
         let calendar = Calendar.current
         guard let dayStart = calendar.date(bySettingHour: openHour, minute: 0, second: 0, of: day) else { return [] }
 
         var results: [Date] = []
         var cursor = dayStart
         while calendar.component(.hour, from: cursor) <= lastStartHour {
-            if isBookable(start: cursor, minutes: minutes, now: now) { results.append(cursor) }
+            if isBookable(start: cursor, minutes: minutes, now: now, leadMinutes: leadMinutes) {
+                results.append(cursor)
+            }
             guard let next = calendar.date(byAdding: .minute, value: stepMinutes, to: cursor) else { break }
             cursor = next
             if !calendar.isDate(cursor, inSameDayAs: day) { break }
@@ -156,26 +175,33 @@ enum Scheduling {
 
     /// The days worth showing in the picker — today only sticks around while it
     /// still has a slot left.
-    static func days(minutes: Int, now: Date = Date()) -> [Date] {
+    static func days(
+        minutes: Int, now: Date = Date(),
+        leadMinutes: Int = minimumLeadMinutes
+    ) -> [Date] {
         let calendar = Calendar.current
         return (0...horizonDays).compactMap { offset -> Date? in
             guard let day = calendar.date(byAdding: .day, value: offset, to: now) else { return nil }
             let normalised = calendar.startOfDay(for: day)
-            return slots(on: normalised, minutes: minutes, now: now).isEmpty ? nil : normalised
+            return slots(on: normalised, minutes: minutes, now: now, leadMinutes: leadMinutes).isEmpty
+                ? nil : normalised
         }
     }
 
     /// The default the picker opens on: soonest legal slot, rounded up to the
     /// next half hour.
-    static func nextSlot(minutes: Int, now: Date = Date()) -> Date {
+    static func nextSlot(
+        minutes: Int, now: Date = Date(),
+        leadMinutes: Int = minimumLeadMinutes
+    ) -> Date {
         let calendar = Calendar.current
-        let earliest = now.addingTimeInterval(Double(minimumLeadMinutes) * 60)
+        let earliest = now.addingTimeInterval(Double(leadMinutes) * 60)
         var cursor = roundedUpToStep(earliest)
 
         // Walk forward a day at a time until something is bookable — a late
         // request rolls to tomorrow morning rather than failing.
         for _ in 0...(horizonDays * 48) {
-            if isBookable(start: cursor, minutes: minutes, now: now) { return cursor }
+            if isBookable(start: cursor, minutes: minutes, now: now, leadMinutes: leadMinutes) { return cursor }
             guard let next = calendar.date(byAdding: .minute, value: stepMinutes, to: cursor) else { break }
             cursor = next
             let hour = calendar.component(.hour, from: cursor)

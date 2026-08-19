@@ -150,7 +150,7 @@ final class HelperSession {
         guard let me, isOnline else { return [] }
         return jobs
             .filter { $0.status == .searching }
-            .filter { me.handles($0.category) }
+            .filter { Vetting.canTake(me, $0.category) }
             .filter { !declinedJobIDs.contains($0.id) }
             // A rate we've already countered is the customer's move, not ours.
             .filter { $0.negotiation?.awaitingCustomer != true }

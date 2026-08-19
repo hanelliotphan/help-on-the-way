@@ -191,8 +191,8 @@ enum MockData {
             headline: "Dog walks, drop-ins, and vet runs",
             bio: "Certified in pet first aid. Every walk comes with a GPS track and an unreasonable number of photos. Comfortable with reactive dogs — just tell me first.",
             rating: 4.98, jobsCompleted: 743, hourlyRate: .usd(40),
-            skills: [.petCare, .delivery],
-            badges: [.backgroundChecked, .topRated, .quickResponder, .insured],
+            skills: [.petCare, .delivery, .babysitting],
+            badges: [.backgroundChecked, .enhancedCheck, .paediatricFirstAid, .topRated, .quickResponder, .insured],
             reviews: [
                 Review(id: fixedID(1022), author: "Bryn A.", stars: 5, body: "My anxious rescue actually likes her. That's never happened.", category: .petCare, daysAgo: 2),
                 Review(id: fixedID(1023), author: "Fern T.", stars: 5, body: "Drove us to the emergency vet at 9pm. I won't forget it.", category: .petCare, daysAgo: 11),
@@ -256,6 +256,68 @@ enum MockData {
             ],
             respondsWithinMinutes: 6, yearsExperience: 3, vehicle: "Mazda 3",
             basePoint: homePoint.offset(metersNorth: 2100, metersEast: 400), accentHue: 0.70
+        ),
+
+        // The care roster. Everyone below carries the credentials `Vetting`
+        // demands for the enhanced categories — without them they simply
+        // wouldn't be offered the work.
+        Helper(
+            id: fixedID(13), firstName: "Bianca", lastInitial: "N",
+            headline: "Sitter and after-school care, 8 years",
+            bio: "Former nursery keyworker. I do bedtime routines properly — bath, story, lights out at the time you set. Happy to cook something simple and tidy the kitchen after. I'll send a short note on how the evening went.",
+            rating: 4.96, jobsCompleted: 389, hourlyRate: .usd(34),
+            skills: [.babysitting, .seniorCare],
+            badges: [.backgroundChecked, .enhancedCheck, .paediatricFirstAid, .topRated, .insured],
+            reviews: [
+                Review(id: fixedID(1040), author: "Rosa M.", stars: 5, body: "Both kids asleep by seven and the kitchen spotless. She left a note about what they ate.", category: .babysitting, daysAgo: 4),
+                Review(id: fixedID(1041), author: "Tom H.", stars: 5, body: "Our youngest is wary of new people and was fine within ten minutes.", category: .babysitting, daysAgo: 15),
+                Review(id: fixedID(1042), author: "Aditi R.", stars: 5, body: "Sits with my father twice a week. Patient, and she actually talks to him.", category: .seniorCare, daysAgo: 26),
+            ],
+            respondsWithinMinutes: 8, yearsExperience: 8, vehicle: "Honda Jazz",
+            basePoint: homePoint.offset(metersNorth: 1100, metersEast: 500), accentHue: 0.86
+        ),
+        Helper(
+            id: fixedID(14), firstName: "Idris", lastInitial: "A",
+            headline: "Maths and physics, GCSE through A-level",
+            bio: "Qualified teacher, eleven years in the classroom, now tutoring evenings. I work from your child's actual syllabus rather than a generic worksheet, and I'll tell you honestly if the problem is confidence rather than content.",
+            rating: 4.93, jobsCompleted: 274, hourlyRate: .usd(52),
+            skills: [.tutoring],
+            badges: [.backgroundChecked, .enhancedCheck, .teachingCredential, .topRated],
+            reviews: [
+                Review(id: fixedID(1043), author: "Chidi E.", stars: 5, body: "Went from a predicted 4 to a 7. Explains the same idea three different ways until one lands.", category: .tutoring, daysAgo: 6),
+                Review(id: fixedID(1044), author: "Laura B.", stars: 5, body: "Told us she didn't need a tutor, she needed practice papers. Refused to keep billing us.", category: .tutoring, daysAgo: 20),
+            ],
+            respondsWithinMinutes: 12, yearsExperience: 11, vehicle: nil,
+            basePoint: homePoint.offset(metersNorth: -900, metersEast: 1700), accentHue: 0.52
+        ),
+        Helper(
+            id: fixedID(15), firstName: "Fiona", lastInitial: "M",
+            headline: "Companion care, errands and appointments",
+            bio: "Care certificate and ten years in home care. I do the things that aren't quite nursing — company, a hot lunch, the supermarket, the hospital run. I write up every visit so the family knows how it went.",
+            rating: 4.91, jobsCompleted: 456, hourlyRate: .usd(36),
+            skills: [.seniorCare, .cleaning, .mealPrep],
+            badges: [.backgroundChecked, .enhancedCheck, .careCertified, .insured, .suppliesIncluded],
+            reviews: [
+                Review(id: fixedID(1045), author: "Gerald P.", stars: 5, body: "Takes Mum to her appointments and stays for the whole thing. We live four hours away; this is everything.", category: .seniorCare, daysAgo: 3),
+                Review(id: fixedID(1046), author: "Sunita K.", stars: 5, body: "Cooks a proper lunch and sits down to eat it with him. That part matters more than I expected.", category: .seniorCare, daysAgo: 17),
+                Review(id: fixedID(1047), author: "Neil D.", stars: 4, body: "Reliable and kind. Booking her is hard — she's in demand.", category: .cleaning, daysAgo: 33),
+            ],
+            respondsWithinMinutes: 15, yearsExperience: 10, vehicle: "Ford Fiesta",
+            basePoint: homePoint.offset(metersNorth: -2000, metersEast: -800), accentHue: 0.06
+        ),
+        Helper(
+            id: fixedID(16), firstName: "Tomas", lastInitial: "R",
+            headline: "A week of meals, cooked in your kitchen",
+            bio: "Line cook by trade. Tell me what people in the house will actually eat and I'll shop, cook and portion a week of it in an afternoon. Everything labelled with reheating instructions. Kitchen left cleaner than I found it.",
+            rating: 4.87, jobsCompleted: 198, hourlyRate: .usd(42),
+            skills: [.mealPrep, .eventHelp, .cleaning],
+            badges: [.backgroundChecked, .suppliesIncluded, .insured],
+            reviews: [
+                Review(id: fixedID(1048), author: "Meg A.", stars: 5, body: "Twelve dinners, all labelled, all things my children will genuinely eat. Worth every penny.", category: .mealPrep, daysAgo: 8),
+                Review(id: fixedID(1049), author: "Pavel S.", stars: 4, body: "Great food. Give him a proper list or he'll ask a lot of questions on the day.", category: .mealPrep, daysAgo: 29),
+            ],
+            respondsWithinMinutes: 20, yearsExperience: 7, vehicle: "Citroën Berlingo",
+            basePoint: homePoint.offset(metersNorth: 1900, metersEast: -1200), accentHue: 0.28
         ),
     ]
 
