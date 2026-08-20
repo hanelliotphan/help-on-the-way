@@ -113,8 +113,10 @@ enum Pricing {
 
     /// A helper's own rate wins when the customer picked them; otherwise the
     /// category's going rate is what we can promise before anyone accepts.
-    static func hourlyRate(category: HelpCategory, helper: Helper?) -> Decimal {
-        helper?.hourlyRate ?? category.defaultHourlyRate
+    /// Nil when nothing has set a rate yet — Custom with no offer on the table.
+    /// A job in that state isn't priceable, and the flow won't let it be booked.
+    static func hourlyRate(category: HelpCategory, helper: Helper?) -> Decimal? {
+        helper?.hourlyRate ?? category.standardHourlyRate
     }
 
     /// Nothing books for less than the category's block, no matter what the

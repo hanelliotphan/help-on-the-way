@@ -168,7 +168,16 @@ final class AppSession {
     /// neighbourhood; scheduled ones get a helper assigned straight away so the
     /// customer knows who's coming.
     @discardableResult
-    func submit(_ draft: RequestDraft) -> Job {
+    func submit(_ draft: RequestDraft) -> Job? {
+        // A Custom job with no rate named has no price, so there is nothing to
+        // book. The flow blocks this, but submitting is the last gate.
+        guard let quote = draft.quote(
+            demand: demand(for: draft.category, at: (draft.address ?? homeAddress).point),
+            now: now
+        ) else {
+            toast = "Name a rate before booking."
+            return nil
+        }
         let timing = draft.timing
         var job = Job(
             category: draft.category,
@@ -178,7 +187,7 @@ final class AppSession {
             address: draft.address ?? homeAddress,
             timing: timing,
             estimatedMinutes: draft.minutes,
-            quote: draft.quote(demand: demand(for: draft.category, at: (draft.address ?? homeAddress).point), now: now),
+            quote: quote,
             status: timing.isInstant ? .searching : .scheduled,
             paymentMethodID: (draft.paymentMethod ?? defaultPaymentMethod)?.id
         )

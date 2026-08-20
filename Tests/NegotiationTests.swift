@@ -15,7 +15,9 @@ struct CustomCategoryTests {
         #expect(!custom.symbol.isEmpty)
         #expect(!custom.defaultJobTitle.isEmpty)
         #expect(!custom.checklist.isEmpty)
-        #expect(custom.defaultHourlyRate > .zero)
+        // Custom deliberately has no going rate to quote.
+        #expect(custom.standardHourlyRate == nil)
+        #expect(custom.needsNamedRate)
         #expect(custom.minimumMinutes == 60)
         #expect(custom.supportsInstant)
     }
@@ -62,7 +64,7 @@ struct CustomCategoryTests {
         #expect(opening <= rates.max()!)
         // Named categories just use their own rate.
         #expect(Negotiation.suggestedOpening(for: .handyman, in: MockData.helpers)
-                == HelpCategory.handyman.defaultHourlyRate)
+                == HelpCategory.handyman.standardHourlyRate)
     }
 }
 
@@ -379,5 +381,105 @@ struct RepriceTests {
         #expect(before.labour == .usd(100))
         #expect(after.labour == .usd(120))
         #expect(after.gross > before.gross)
+    }
+}
+
+@Suite("Custom has no rate until you name one")
+@MainActor
+struct CustomRateTests {
+
+    private let now = Calendar.current.date(from: DateComponents(
+        year: 2026, month: 6, day: 15, hour: 9, minute: 0
+    ))!
+
+    private func draft(_ category: HelpCategory) -> RequestDraft {
+        RequestDraft(category: category, address: MockData.addresses[0], wantsInstant: false, now: now)
+    }
+
+    @Test("Custom advertises no price on its tile")
+    func tileAdvertisesNoPrice() {
+        #expect(HelpCategory.custom.rateLabel == "You name it")
+        // Everything else still quotes a number.
+        for category in HelpCategory.allCases where category != .custom {
+            #expect(category.rateLabel.contains("/hr"), "\(category.title) lost its rate")
+        }
+    }
+
+    @Test("A fresh Custom draft has no rate at all")
+    func customStartsUnpriced() {
+        let draft = draft(.custom)
+        #expect(draft.offeredRate == nil)
+        #expect(draft.hourlyRate == nil)
+        #expect(!draft.isPriceable)
+        #expect(draft.quote(demand: .calm, now: now) == nil)
+    }
+
+    @Test("An unpriced Custom job can't leave the details step or be booked")
+    func unpricedCannotAdvance() {
+        let draft = draft(.custom)
+        draft.step = .details
+        #expect(!draft.canAdvance(now: now))
+
+        draft.setOfferedRate(.usd(40))
+        #expect(draft.canAdvance(now: now))
+    }
+
+    @Test("Naming a rate prices the job at that rate")
+    func namingARatePrices() {
+        let draft = draft(.custom)
+        draft.setOfferedRate(.usd(37))
+        #expect(draft.hourlyRate == .usd(37))
+        #expect(draft.isPriceable)
+        #expect(draft.quote(demand: .calm, now: now)?.hourlyRate == .usd(37))
+    }
+
+    @Test("Every other category is priceable straight away")
+    func standardCategoriesArePriced() {
+        for category in HelpCategory.allCases where category != .custom {
+            let draft = draft(category)
+            #expect(draft.isPriceable, "\(category.title) should have a rate")
+            #expect(draft.hourlyRate == category.standardHourlyRate)
+        }
+    }
+
+    @Test("Switching into Custom clears the rate it inherited")
+    func switchingToCustomClearsRate() {
+        let draft = draft(.handyman)
+        #expect(draft.hourlyRate == HelpCategory.handyman.standardHourlyRate)
+        draft.select(category: .custom, now: now)
+        #expect(draft.hourlyRate == nil, "carried the handyman rate into Custom")
+    }
+
+    @Test("Switching out of Custom picks the new category's rate back up")
+    func switchingOutOfCustomRestoresRate() {
+        let draft = draft(.custom)
+        draft.setOfferedRate(.usd(90))
+        draft.select(category: .cleaning, now: now)
+        #expect(draft.hourlyRate == HelpCategory.cleaning.standardHourlyRate)
+    }
+
+    @Test("The suggestion is drawn from what helpers actually charge")
+    func suggestionIsGrounded() {
+        let draft = draft(.custom)
+        let suggested = draft.suggestedRate(in: MockData.helpers)
+        let rates = MockData.helpers.map(\.hourlyRate)
+        #expect(suggested >= rates.min()!)
+        #expect(suggested <= rates.max()!)
+        // And it stays a suggestion — reading it doesn't set anything.
+        #expect(draft.hourlyRate == nil)
+    }
+
+    @Test("A named Custom rate opens a negotiation on the job")
+    func namedRateIsNegotiable() {
+        let draft = draft(.custom)
+        draft.setOfferedRate(.usd(30))
+        #expect(draft.isNegotiating)
+
+        // A helper who charges more answers with a number rather than silently
+        // working for it.
+        let pricier = MockData.helpers.first { $0.hourlyRate > .usd(50) }!
+        let negotiation = RateNegotiation(openingRate: .usd(30), at: now)
+        let response = Negotiation.response(to: .usd(30), helper: pricier, negotiation: negotiation)
+        #expect(response != .accept)
     }
 }

@@ -169,7 +169,12 @@ struct VettingTests {
         for category in [HelpCategory.babysitting, .tutoring, .seniorCare, .mealPrep] {
             #expect(!category.title.isEmpty)
             #expect(!category.tagline.isEmpty)
-            #expect(category.defaultHourlyRate > .zero)
+            // Every category but Custom quotes a rate; Custom asks for one.
+            if let rate = category.standardHourlyRate {
+                #expect(rate > .zero)
+            } else {
+                #expect(category == .custom)
+            }
             #expect(category.minimumMinutes >= 60)
             #expect(!category.checklist.isEmpty)
             #expect(!category.defaultJobTitle.isEmpty)

@@ -66,7 +66,9 @@ final class RequestDraft {
         self.address = address
         self.minutes = category.minimumMinutes
         if category == .custom {
-            self.offeredRate = Negotiation.suggestedOpening(for: category, in: MockData.helpers)
+            // Deliberately not pre-filled. Custom has no going rate, and seeding
+            // the field with one would put a number in the customer's mouth.
+            self.offeredRate = nil
         }
         self.wantsInstant = wantsInstant && category.supportsInstant
         self.scheduledStart = Scheduling.nextSlot(minutes: category.minimumMinutes, now: now, leadMinutes: Vetting.minimumLeadMinutes(for: category))
@@ -86,8 +88,19 @@ final class RequestDraft {
 
     /// A rate the customer named beats both the chosen helper's rate and the
     /// category's — it's an offer, and the whole point is that it's theirs.
-    var hourlyRate: Decimal {
+    var hourlyRate: Decimal? {
         offeredRate ?? Pricing.hourlyRate(category: category, helper: chosenHelper)
+    }
+
+    /// Nothing can be quoted until a rate exists. For every category but Custom
+    /// that's immediate; for Custom it waits on the customer.
+    var isPriceable: Bool { hourlyRate != nil }
+
+    /// The rate to open a negotiation at when the customer first reaches for the
+    /// stepper — a suggestion drawn from what comparable work actually pays,
+    /// not a default that quietly becomes the price.
+    func suggestedRate(in roster: [Helper]) -> Decimal {
+        Negotiation.suggestedOpening(for: category, in: roster)
     }
 
     var isNegotiating: Bool { offeredRate != nil }
@@ -105,7 +118,7 @@ final class RequestDraft {
     func startNegotiating(roster: [Helper]) {
         guard offeredRate == nil else { return }
         offeredRate = Negotiation.roundedToStep(
-            category == .custom ? Negotiation.suggestedOpening(for: category, in: roster) : hourlyRate
+            hourlyRate ?? Negotiation.suggestedOpening(for: category, in: roster)
         )
     }
 
@@ -115,8 +128,9 @@ final class RequestDraft {
 
     var hasMinimumBump: Bool { billableMinutes > minutes }
 
-    func quote(demand: DemandIndex, now: Date = Date()) -> Quote {
-        Pricing.quote(
+    func quote(demand: DemandIndex, now: Date = Date()) -> Quote? {
+        guard let hourlyRate else { return nil }
+        return Pricing.quote(
             category: category,
             requestedMinutes: minutes,
             hourlyRate: hourlyRate,
@@ -141,10 +155,10 @@ final class RequestDraft {
     func canAdvance(now: Date = Date()) -> Bool {
         switch step {
         case .category: true
-        case .details: minutes > 0 && rateIssue == nil
+        case .details: minutes > 0 && rateIssue == nil && isPriceable
         case .location: address != nil
         case .timing: schedulingIssue(now: now) == nil
-        case .review: address != nil && schedulingIssue(now: now) == nil
+        case .review: address != nil && schedulingIssue(now: now) == nil && isPriceable
         }
     }
 
@@ -171,7 +185,7 @@ final class RequestDraft {
         // Custom has no going rate, so it always opens negotiating. Anything
         // else falls back to its own rate until the customer opts in again.
         offeredRate = newValue == .custom
-            ? Negotiation.suggestedOpening(for: newValue, in: MockData.helpers)
+            ? nil
             : nil
         if !newValue.supportsInstant { wantsInstant = false }
         scheduledStart = Scheduling.nextSlot(minutes: minutes, now: now, leadMinutes: leadMinutes)

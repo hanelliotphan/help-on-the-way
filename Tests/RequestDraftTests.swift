@@ -134,7 +134,7 @@ struct RequestDraftTests {
     @Test("Picking a helper prices the job at their rate")
     func chosenHelperSetsTheRate() {
         let draft = draft(.assembly)
-        #expect(draft.hourlyRate == HelpCategory.assembly.defaultHourlyRate)
+        #expect(draft.hourlyRate == HelpCategory.assembly.standardHourlyRate)
         draft.chosenHelper = MockData.helper(MockData.fixedID(3))
         #expect(draft.hourlyRate == MockData.helper(MockData.fixedID(3))?.hourlyRate)
     }
@@ -144,7 +144,7 @@ struct RequestDraftTests {
         let draft = draft(.cleaning, instant: true)
         let demand = DemandIndex(openRequests: 12, availableHelpers: 8)
         let expected = Pricing.quote(
-            category: .cleaning, requestedMinutes: draft.minutes, hourlyRate: draft.hourlyRate,
+            category: .cleaning, requestedMinutes: draft.minutes, hourlyRate: draft.hourlyRate!,
             timing: .now, demand: demand, promo: nil, now: now
         )
         #expect(draft.quote(demand: demand, now: now) == expected)
@@ -157,7 +157,7 @@ struct RequestDraftTests {
 
         let later = draft(.cleaning, instant: false)
         later.scheduledStart = now.addingTimeInterval(48 * 3600)
-        #expect(later.quote(demand: busy, now: now).total < instant.total)
+        #expect(later.quote(demand: busy, now: now)!.total < instant!.total)
     }
 
     // MARK: Promos
@@ -204,10 +204,10 @@ struct RequestDraftTests {
     @Test("An applied promo shows up in the quote")
     func promoReachesTheQuote() {
         let draft = draft(.cleaning, instant: false)
-        let before = draft.quote(demand: .calm, now: now).total
+        let before = draft.quote(demand: .calm, now: now)!.total
         draft.promoText = "WEEKEND10"
         draft.applyPromo()
-        let after = draft.quote(demand: .calm, now: now)
+        let after = draft.quote(demand: .calm, now: now)!
         #expect(after.promoCode == "WEEKEND10")
         #expect(after.total < before)
     }

@@ -63,9 +63,9 @@ enum Negotiation {
     /// A starting number for the rate control. Custom has no going rate, so the
     /// midpoint of what everybody charges is the least misleading opener.
     static func suggestedOpening(for category: HelpCategory, in roster: [Helper]) -> Decimal {
-        guard category == .custom else { return category.defaultHourlyRate }
+        if let standard = category.standardHourlyRate { return standard }
         let rates = roster.map(\.hourlyRate)
-        guard !rates.isEmpty else { return category.defaultHourlyRate }
+        guard !rates.isEmpty else { return floor }
         let total = rates.reduce(Decimal.zero, +)
         return roundedToStep(total / Decimal(rates.count))
     }

@@ -51,7 +51,7 @@ struct CategoryStep: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 5) {
-                Text(Format.rate(category.defaultHourlyRate))
+                Text(category.rateLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(selected ? .white : Palette.accent)
                 if category.trustTier == .enhanced {
@@ -242,22 +242,40 @@ struct DetailsStep: View {
                 Text(draft.category == .custom ? "Your rate" : "Rate")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text(Format.rate(draft.hourlyRate))
+                Text(draft.hourlyRate.map(Format.rate) ?? "Not set")
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(draft.isNegotiating ? Palette.instant : Palette.accent)
+                    .foregroundStyle(draft.hourlyRate == nil
+                                     ? Palette.danger
+                                     : (draft.isNegotiating ? Palette.instant : Palette.accent))
             }
 
-            if draft.isNegotiating {
+            if !draft.isNegotiating && draft.hourlyRate == nil {
+                // Custom, untouched. No number is shown until the customer picks
+                // one, because there isn't one to show.
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("There's no going rate for a custom job. Name what you're willing to pay and helpers can accept it or come back with their own number.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let band {
+                        Text("For comparison, helpers near you charge \(band.lowerBound.shortCurrency)–\(band.upperBound.shortCurrency) an hour.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    BigButton(title: "Set a rate", symbol: "dollarsign.circle", tint: Palette.instant) {
+                        draft.startNegotiating(roster: session.backend.roster)
+                    }
+                }
+            } else if draft.isNegotiating {
                 HStack(spacing: 12) {
                     Button {
-                        draft.setOfferedRate((draft.offeredRate ?? draft.hourlyRate) - Negotiation.step)
+                        draft.setOfferedRate((draft.offeredRate ?? draft.suggestedRate(in: session.backend.roster)) - Negotiation.step)
                     } label: {
                         stepperGlyph("minus")
                     }
                     .buttonStyle(.plain)
 
                     VStack(spacing: 1) {
-                        Text(draft.hourlyRate.shortCurrency)
+                        Text((draft.hourlyRate ?? draft.suggestedRate(in: session.backend.roster)).shortCurrency)
                             .font(.system(size: 30, weight: .bold, design: .rounded))
                             .foregroundStyle(Palette.instant)
                         Text("per hour")
@@ -267,7 +285,7 @@ struct DetailsStep: View {
                     .frame(maxWidth: .infinity)
 
                     Button {
-                        draft.setOfferedRate((draft.offeredRate ?? draft.hourlyRate) + Negotiation.step)
+                        draft.setOfferedRate((draft.offeredRate ?? draft.suggestedRate(in: session.backend.roster)) + Negotiation.step)
                     } label: {
                         stepperGlyph("plus")
                     }
@@ -325,7 +343,9 @@ struct DetailsStep: View {
     /// Tells the customer where their number sits, because "is this enough?" is
     /// the only real question when you're naming a rate.
     private func rateReadout(band: ClosedRange<Decimal>) -> (String, Color) {
-        let rate = draft.hourlyRate
+        // Only called from inside the negotiating branch, where a rate exists;
+        // the suggestion is a belt-and-braces fallback rather than a default.
+        let rate = draft.hourlyRate ?? draft.suggestedRate(in: session.backend.roster)
         if rate < band.lowerBound {
             return ("Under everyone's rate — expect counters, or nobody biting.", Palette.danger)
         }

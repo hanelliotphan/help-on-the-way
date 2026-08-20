@@ -13,7 +13,7 @@ struct RequestFlowView: View {
         session.demand(for: draft.category, at: (draft.address ?? session.homeAddress).point)
     }
 
-    private var quote: Quote {
+    private var quote: Quote? {
         draft.quote(demand: demand, now: session.now)
     }
 
@@ -37,7 +37,17 @@ struct RequestFlowView: View {
                         case .timing:
                             TimingStep(draft: draft, demand: demand)
                         case .review:
-                            ReviewStep(draft: draft, quote: quote, demand: demand)
+                            // Unreachable without a rate — the details step won't
+                            // advance unpriced — but the compiler wants the case.
+                            if let quote {
+                                ReviewStep(draft: draft, quote: quote, demand: demand)
+                            } else {
+                                EmptyBlock(
+                                    symbol: "dollarsign.circle",
+                                    title: "Name a rate first",
+                                    message: "Go back to the details step and say what you're willing to pay."
+                                )
+                            }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -92,13 +102,15 @@ struct RequestFlowView: View {
                         Text(draft.step == .review ? "Total" : "Estimate")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text(quote.total.currency)
+                        Text(quote?.total.currency ?? "—")
                             .font(.title3.weight(.bold))
+                            .foregroundStyle(quote == nil ? .secondary : .primary)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
                         TimingChip(timing: draft.timing, now: session.now)
-                        Text("\(Format.duration(minutes: quote.minutes)) · \(Format.rate(draft.hourlyRate))")
+                        Text(draft.hourlyRate.map { "\(Format.duration(minutes: draft.billableMinutes)) · \(Format.rate($0))" }
+                             ?? "Name a rate to see the total")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

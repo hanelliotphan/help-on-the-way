@@ -187,7 +187,10 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
-    var defaultHourlyRate: Decimal {
+    /// What this work goes for. Nil for Custom: the app has no rate to quote for
+    /// a job it doesn't know, and inventing one would be a number pulled out of
+    /// the air presented as a going rate.
+    var standardHourlyRate: Decimal? {
         switch self {
         case .cleaning: .usd(46)
         case .handyman: .usd(58)
@@ -202,11 +205,17 @@ enum HelpCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .tutoring: .usd(45)
         case .seniorCare: .usd(34)
         case .mealPrep: .usd(40)
-        // No going rate to quote — this is only a starting point for the
-        // conversation, and the customer is expected to change it.
-        case .custom: .usd(50)
+        case .custom: nil
         }
     }
+
+    /// What a category tile shows. Custom advertises no price, because it has none.
+    var rateLabel: String {
+        standardHourlyRate.map { "\($0.shortCurrency)/hr" } ?? "You name it"
+    }
+
+    /// True when the customer has to supply the rate themselves.
+    var needsNamedRate: Bool { standardHourlyRate == nil }
 
     /// Nobody sends a helper across town for fifteen minutes of work, so each
     /// category books in a block. The quote never comes in under this.

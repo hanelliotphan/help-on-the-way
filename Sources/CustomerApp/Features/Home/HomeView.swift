@@ -196,7 +196,7 @@ struct HomeView: View {
                                 .multilineTextAlignment(.center)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.85)
-                            Text(category.defaultHourlyRate.shortCurrency + "/hr")
+                            Text(category.rateLabel)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
