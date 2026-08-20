@@ -58,6 +58,7 @@ final class HelperSession {
         }
         isOnline = UserDefaults.standard.bool(forKey: Self.onlineKey)
         reload(force: true)
+        reconcilePresence()
         startTicker()
     }
 
@@ -86,6 +87,24 @@ final class HelperSession {
     }
 
     // MARK: Presence
+
+    /// Makes the shared latch agree with this device's switch.
+    ///
+    /// The two can disagree: `setOnline(false)` writes to the store, but an app
+    /// force-quit while on shift never gets to. The latch then says the helper
+    /// is available while their app shows Offline and never surfaces an offer —
+    /// and the customer app, seeing a live helper, stands down and waits out its
+    /// full grace window for somebody who isn't coming.
+    ///
+    /// The device holding the persona is the authority on whether it's working,
+    /// so on launch it asserts its own state either way.
+    private func reconcilePresence() {
+        guard let me else { return }
+        let storeSaysOnline = Persistence.load()?.onlineHelpers.contains(me.id) ?? false
+        guard storeSaysOnline != isOnline else { return }
+        SharedStore.setOnline(isOnline, helperID: me.id, at: Date())
+        reload(force: true)
+    }
 
     func setOnline(_ value: Bool) {
         isOnline = value
@@ -129,6 +148,7 @@ final class HelperSession {
     func refreshFromForeground() {
         now = Date()
         reload(force: true)
+        reconcilePresence()
         if isOnline, let me { SharedStore.setOnline(true, helperID: me.id, at: now) }
         advanceCompletedWork()
     }
