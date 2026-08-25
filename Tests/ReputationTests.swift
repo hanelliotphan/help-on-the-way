@@ -205,3 +205,153 @@ struct ReputationTests {
         }
     }
 }
+
+@Suite("Storage and roster caching")
+@MainActor
+struct RosterStorageTests {
+
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func review(_ stars: Int, body: String = "Good") -> Review {
+        Review(author: "A customer", stars: stars, body: body,
+               category: .handyman, daysAgo: 0, postedAt: now, compliments: [])
+    }
+
+    private func job(with helper: Helper) -> Job {
+        var job = Job(
+            category: .handyman, title: "Test", address: MockData.addresses[0],
+            timing: .now, estimatedMinutes: 60,
+            quote: Pricing.quote(category: .handyman, requestedMinutes: 60,
+                                 hourlyRate: .usd(58), timing: .now),
+            status: .completed
+        )
+        job.helper = helper
+        return job
+    }
+
+    // MARK: What a job stores about its helper
+
+    @Test("A job's helper record carries no reviews")
+    func jobRecordDropsReviews() {
+        let helper = MockData.helpers[0]
+        #expect(!helper.reviews.isEmpty, "fixture should have reviews to drop")
+
+        let record = helper.forJobRecord
+        #expect(record.reviews.isEmpty)
+        // Everything a receipt actually needs survives.
+        #expect(record.id == helper.id)
+        #expect(record.displayName == helper.displayName)
+        #expect(record.hourlyRate == helper.hourlyRate)
+        #expect(record.rating == helper.rating)
+        #expect(record.badges == helper.badges)
+        #expect(record.vehicle == helper.vehicle)
+    }
+
+    @Test("Trimming twice changes nothing the second time")
+    func jobRecordIsIdempotent() {
+        let once = MockData.helpers[0].forJobRecord
+        #expect(once.forJobRecord == once)
+    }
+
+    @Test("Published reviews don't leak into a job record")
+    func publishedReviewsDoNotLeak() {
+        // The bug: a helper merged with published reviews got snapshotted onto
+        // every job they took, duplicating every review into every job.
+        let merged = Reputation.merged(MockData.helpers[0], published: [review(5), review(4)])
+        #expect(merged.reviews.count > MockData.helpers[0].reviews.count)
+        #expect(merged.forJobRecord.reviews.isEmpty)
+    }
+
+    @Test("Loading trims review lists off historical jobs")
+    func normalisationTrimsExistingJobs() {
+        var snapshot = StoreSnapshot.seeded()
+        snapshot.jobs = [job(with: MockData.helpers[0]), job(with: MockData.helpers[1])]
+        #expect(snapshot.jobs.allSatisfy { $0.helper?.reviews.isEmpty == false })
+
+        let cleaned = snapshot.normalised()
+        #expect(cleaned.jobs.allSatisfy { $0.helper?.reviews.isEmpty == true })
+        // And nothing else moved.
+        #expect(cleaned.jobs.map(\.id) == snapshot.jobs.map(\.id))
+        #expect(cleaned.jobs.compactMap { $0.helper?.displayName }
+                == snapshot.jobs.compactMap { $0.helper?.displayName })
+    }
+
+    @Test("Normalising is safe on jobs with no helper")
+    func normalisationHandlesUnassignedJobs() {
+        var snapshot = StoreSnapshot.seeded()
+        var unassigned = job(with: MockData.helpers[0])
+        unassigned.helper = nil
+        snapshot.jobs = [unassigned]
+        #expect(snapshot.normalised().jobs.first?.helper == nil)
+    }
+
+    @Test("Trimming measurably shrinks what gets written")
+    func trimmingShrinksTheStore() throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        var fat = StoreSnapshot.seeded()
+        fat.jobs = MockData.helpers.prefix(6).map { job(with: $0) }
+        let before = try encoder.encode(fat).count
+        let after = try encoder.encode(fat.normalised()).count
+
+        #expect(after < before)
+        // The duplication was over a quarter of the document.
+        #expect(Double(before - after) / Double(before) > 0.2)
+    }
+
+    // MARK: Roster caching
+
+    @Test("The cached roster starts as the seed")
+    func cacheStartsAsSeed() {
+        let backend = DemoBackend()
+        #expect(backend.roster == MockData.helpers)
+    }
+
+    @Test("Publishing a review refreshes the cache")
+    func cacheRefreshesOnApply() {
+        let backend = DemoBackend()
+        let target = MockData.helpers[0]
+        let before = backend.roster.first { $0.id == target.id }?.reviews.count ?? 0
+
+        backend.apply(publishedReviews: [target.id: [review(5, body: "New")]])
+        let after = backend.roster.first { $0.id == target.id }
+        #expect(after?.reviews.count == before + 1)
+        #expect(after?.reviews.first?.body == "New")
+    }
+
+    @Test("Reading the roster repeatedly gives the same value")
+    func cacheIsStable() {
+        let backend = DemoBackend()
+        backend.apply(publishedReviews: [MockData.helpers[0].id: [review(4)]])
+        #expect(backend.roster == backend.roster)
+    }
+
+    @Test("Applying the same reviews again is a no-op")
+    func cacheSkipsRedundantWork() {
+        let backend = DemoBackend()
+        let reviews = [MockData.helpers[0].id: [review(5)]]
+        backend.apply(publishedReviews: reviews)
+        let first = backend.roster
+        backend.apply(publishedReviews: reviews)
+        #expect(backend.roster == first)
+    }
+
+    @Test("Clearing the reviews puts the roster back to the seed")
+    func cacheClears() {
+        let backend = DemoBackend()
+        backend.apply(publishedReviews: [MockData.helpers[0].id: [review(1)]])
+        #expect(backend.roster != MockData.helpers)
+        backend.apply(publishedReviews: [:])
+        #expect(backend.roster == MockData.helpers)
+    }
+
+    @Test("A helper looked up by id comes from the merged roster")
+    func lookupUsesMergedRoster() {
+        let backend = DemoBackend()
+        let target = MockData.helpers[0]
+        backend.apply(publishedReviews: [target.id: [review(5)]])
+        #expect(backend.helper(target.id)?.reviews.count == target.reviews.count + 1)
+        #expect(backend.helper(UUID()) == nil)
+    }
+}

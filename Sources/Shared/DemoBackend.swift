@@ -38,10 +38,18 @@ final class DemoBackend {
 
     /// Helpers as they should appear right now — seeded record plus whatever
     /// customers have said since, with ratings rederived.
-    var roster: [Helper] { Reputation.roster(baseRoster, published: publishedReviews) }
+    ///
+    /// Cached rather than computed per access. Merging maps the whole roster,
+    /// sorts each helper's reviews and rederives each average; `roster` is read
+    /// from eighteen places including view bodies, so as a computed property it
+    /// ran that work on every keystroke of the rate stepper and every redraw of
+    /// a profile. The inputs only move when somebody posts a review.
+    private(set) var roster: [Helper]
 
     func apply(publishedReviews: [UUID: [Review]]) {
+        guard publishedReviews != self.publishedReviews else { return }
         self.publishedReviews = publishedReviews
+        roster = Reputation.roster(baseRoster, published: publishedReviews)
     }
 
     func helper(_ id: UUID) -> Helper? { roster.first { $0.id == id } }
@@ -52,6 +60,7 @@ final class DemoBackend {
 
     init(roster: [Helper] = MockData.helpers) {
         self.baseRoster = roster
+        self.roster = roster
     }
 
     // MARK: Demand

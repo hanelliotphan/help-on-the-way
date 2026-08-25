@@ -72,6 +72,8 @@ final class AppSession {
 
     init(backend: DemoBackend? = nil, snapshot: StoreSnapshot? = Persistence.load()) {
         self.backend = backend ?? DemoBackend()
+        let needsTrimming = snapshot?.hasOverweightJobRecords ?? false
+        let snapshot = snapshot?.normalised()
         if let snapshot {
             hasOnboarded = snapshot.hasOnboarded
             profile = snapshot.profile
@@ -90,6 +92,8 @@ final class AppSession {
             timeScale = Dispatch.demoTimeScale
         }
         self.backend.apply(publishedReviews: publishedReviews)
+        // One-time migration for stores written before job records were trimmed.
+        if needsTrimming { scheduleSave() }
         startTicker()
     }
 
@@ -193,7 +197,7 @@ final class AppSession {
         )
 
         if let chosen = draft.chosenHelper {
-            job.helper = chosen
+            job.helper = chosen.forJobRecord
             job.helperWasChosen = true
         }
 
@@ -218,7 +222,7 @@ final class AppSession {
                     near: job.address.point,
                     in: backend.roster,
                     favorites: profile.favoriteHelperIDs
-                )?.helper
+                )?.helper.forJobRecord
             }
             job.events.append(JobEvent(
                 at: now, status: .scheduled,
@@ -310,7 +314,7 @@ final class AppSession {
     private func accept(helper: Helper, forJobAt index: Int) {
         let acceptedAt = Date()
         var job = jobs[index]
-        job.helper = helper
+        job.helper = helper.forJobRecord
         job.status = .accepted
         job.dispatch = makePlan(for: job, helper: helper, acceptedAt: acceptedAt)
         job.events.append(JobEvent(at: acceptedAt, status: .accepted, note: "\(helper.displayName) accepted"))

@@ -33,7 +33,15 @@ final class HelperSession {
     private let baseRoster: [Helper] = MockData.helpers
     private var publishedReviews: [UUID: [Review]] = [:]
 
-    var roster: [Helper] { Reputation.roster(baseRoster, published: publishedReviews) }
+    /// Same reasoning as the customer app's backend: merging is real work and
+    /// the inputs only move when a review is published.
+    private(set) var roster: [Helper] = MockData.helpers
+
+    private func rebuildRoster(from reviews: [UUID: [Review]]) {
+        guard reviews != publishedReviews else { return }
+        publishedReviews = reviews
+        roster = Reputation.roster(baseRoster, published: reviews)
+    }
 
     /// This helper as customers now see them — rating rederived, newest reviews
     /// first. `me` stays the signed-in identity; this is the public face of it.
@@ -126,12 +134,12 @@ final class HelperSession {
         if !force, stamp == lastSeenStamp { return }
         lastSeenStamp = stamp
 
-        guard let disk = Persistence.load() else { return }
+        guard let disk = Persistence.load()?.normalised() else { return }
         guard force || disk.revision != lastRevision else { return }
         lastRevision = disk.revision
         jobs = disk.jobs
         customer = disk.profile
-        publishedReviews = disk.reviewsByHelper
+        rebuildRoster(from: disk.reviewsByHelper)
     }
 
     func tick() {
@@ -234,7 +242,7 @@ final class HelperSession {
             guard snapshot.jobs[index].status == .searching else { return }
 
             var taken = snapshot.jobs[index]
-            taken.helper = me
+            taken.helper = me.forJobRecord
             taken.status = .accepted
             // Accepting settles the haggling at whatever the customer last
             // offered, and the quote is re-priced to match before anyone is

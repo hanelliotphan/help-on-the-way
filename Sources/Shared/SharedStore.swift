@@ -32,6 +32,9 @@ enum SharedStore {
         var snapshot = Persistence.load() ?? .seeded()
         change(&snapshot)
         if bumpRevision { snapshot.revision += 1 }
+        // Trimmed on the way out, so an overweight job record can't be written
+        // back by any path.
+        snapshot = snapshot.normalised()
         Persistence.save(snapshot)
         return snapshot
     }

@@ -455,6 +455,22 @@ struct Helper: Identifiable, Codable, Hashable, Sendable {
         min(94, max(55, Int(((rating - 4.7) * 40 + 76).rounded())))
     }
 
+    /// The copy that gets stored on a `Job`.
+    ///
+    /// A job keeps a snapshot of who did it so a receipt still shows the right
+    /// name and rate years later, even if they since raised it. What it has no
+    /// business keeping is their review list: reviews belong to the person, not
+    /// to one job, and embedding them means every review ever written is
+    /// duplicated into every job that person has done. Storage then grows as
+    /// jobs × reviews, and 27% of the store was already these copies.
+    ///
+    /// Anything that wants the live reviews resolves the helper from the roster.
+    var forJobRecord: Helper {
+        var trimmed = self
+        trimmed.reviews = []
+        return trimmed
+    }
+
     /// Custom isn't a skill — it's "something else", and the job description is
     /// the only thing to judge it on. Filtering the roster by it would leave
     /// nobody, so every helper is eligible and decides for themselves.

@@ -49,6 +49,24 @@ struct StoreSnapshot: Codable {
         roster.contains { onlineHelpers.contains($0.id) && $0.handles(category) }
     }
 
+    /// True when any job still carries its helper's review list.
+    var hasOverweightJobRecords: Bool {
+        jobs.contains { $0.helper?.reviews.isEmpty == false }
+    }
+
+    /// Trims review lists out of the helper copies stored on jobs.
+    ///
+    /// Applied on every write, so the duplication can never come back, and
+    /// flushed once at launch so a store written before `forJobRecord` existed
+    /// shrinks straight away rather than waiting on an unrelated edit.
+    func normalised() -> StoreSnapshot {
+        var copy = self
+        for index in copy.jobs.indices where copy.jobs[index].helper?.reviews.isEmpty == false {
+            copy.jobs[index].helper = copy.jobs[index].helper?.forJobRecord
+        }
+        return copy
+    }
+
     static func seeded() -> StoreSnapshot {
         StoreSnapshot(
             hasOnboarded: false,
