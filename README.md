@@ -1,7 +1,8 @@
 # Help on the Way
 
 **Two iOS apps** for booking someone to come and do a thing — cleaning, repairs,
-moving, assembly, errands, yard work, tech help, pets, events — either **right
+moving, assembly, errands, yard work, tech help, pets, events, babysitting,
+tutoring, senior care, meal prep, or anything you can describe — either **right
 now** or **on your calendar**.
 
 | | |
@@ -23,10 +24,12 @@ dispatcher stands down and waits for a person to tap Accept.
 Everything runs on-device. No account, no server, no network calls, no card
 fields.
 
-| | | |
-|---|---|---|
-| ![Asking for help](docs/request.gif) | ![Two apps, one dispatcher](docs/handoff.gif) | ![Picking a time](docs/scheduler.gif) |
-| **Asking for help** — five steps, with the price updating as you go | **Two apps, one dispatcher** — the request goes out, a helper accepts in *their* app, tracking lights up in yours | **Picking a time** — morning, afternoon or evening, then the slots inside it |
+| | |
+|---|---|
+| ![Asking for help](docs/request.gif) | ![Two apps, one dispatcher](docs/handoff.gif) |
+| **Asking for help** — five steps, with the price updating as you go | **Two apps, one dispatcher** — the request goes out, a helper accepts in *their* app, tracking lights up in yours |
+| ![Name your own rate](docs/custom.gif) | ![Picking a time](docs/scheduler.gif) |
+| **Name your own rate** — Custom quotes no price, so you set one against what helpers actually charge, and they can accept or counter | **Picking a time** — a day, then a start time grouped by morning, afternoon and evening |
 
 The middle one is the whole point of the repo, so it's worth watching: the
 "A helper is looking at this" screen is the customer app *declining to
@@ -103,13 +106,32 @@ Every line is shown, every line is explained.
 ETA that counts down, a status timeline, and a compressed demo clock so a
 two-hour job plays out in a few minutes.
 
-**Helpers** — twelve fixtures with rates, ratings, badges, skills, vehicles,
+**Helpers** — sixteen fixtures with rates, ratings, badges, skills, vehicles,
 bios, reviews and a derived rebook rate. Favourites, profiles, per-helper booking
 history.
 
 **The rest** — activity split into active / upcoming / past, receipts, a message
 thread per job with keyword-aware replies, saved addresses with a map pin, a
 ratings flow with compliments and tipping off labour, and an account tab.
+
+**Naming your own rate** — Custom has no going rate, because the app has none to
+quote for work it doesn't know. You name what you'll pay against the band helpers
+actually charge, and whoever picks it up accepts, counters, or walks away. Any
+category can be haggled the same way.
+
+**Vetting** — babysitting, tutoring and senior care sit behind enhanced checks:
+those categories are scheduled-only, need more notice, and are only ever offered
+to helpers carrying the right credentials. The customer sees which checks apply
+and why.
+
+**Reviews that are actually published** — a rating appends a real review to the
+helper's profile and their rating is rederived from it, weighted by the jobs
+behind them so one bad night can't erase eight hundred good ones.
+
+**Your account** — edit your details, add and remove cards (brand, last four,
+expiry, cardholder and billing address only — a card number is never stored),
+manage addresses, and delete the account outright. Deletion is refused while a
+helper is mid-job or holding a booked slot.
 
 **Demo tools** (Account → Demo tools) — change the clock speed, force the
 "nobody available" path, pull a scheduled job forward, finish a running job
@@ -119,7 +141,7 @@ early, or reset everything.
 
 ## The helper app
 
-Sign in as any of the twelve roster helpers — there's no auth, so "signing in" is
+Sign in as any of the sixteen roster helpers — there's no auth, so "signing in" is
 picking which of them you are, which is also what makes the two-app demo work:
 you can be the person the customer app just dispatched to.
 
@@ -190,7 +212,7 @@ Tests/          Pricing, Dispatch, Scheduling, Matching, RequestDraft,
                 Persistence, HelperActions, Payouts, Presence
 ```
 
-Roughly 9,400 lines of app and 1,600 of tests across 40 files. All the helper's
+Roughly 12,500 lines of app and 3,800 of tests across 55 files. All the helper's
 *logic* lives in `Shared` rather than `HelperApp` — that's what lets one test
 target cover both apps without a second `@testable import`.
 
@@ -270,7 +292,7 @@ without it the two apps can't see each other.
 
 ## Tests
 
-156 tests in 14 suites, written with Swift Testing. All logic-only — no UI tests,
+350 tests in 29 suites, written with Swift Testing. All logic-only — no UI tests,
 no waiting.
 
 ```bash
