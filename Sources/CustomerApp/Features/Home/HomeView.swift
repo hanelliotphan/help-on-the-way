@@ -178,35 +178,56 @@ struct HomeView: View {
 
     // MARK: Categories
 
+    /// A single scrolling row rather than a grid.
+    ///
+    /// Fourteen categories in a three-column grid is five stacked rows of tall
+    /// tiles, which pushed everything worth seeing — live jobs, helpers nearby,
+    /// rebooking — below the fold. A rail is how every delivery app does this,
+    /// and for the same reason: browsing a catalogue is a sideways motion, and
+    /// the vertical space belongs to what you actually came for.
+    ///
+    /// The rate comes off the rail too. It's a browsing control, not a price
+    /// list, and the details step quotes the rate the moment you pick one.
     private var categories: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "What needs doing?", detail: "Tap a category to start a request")
-            LazyVGrid(columns: Array(repeating: GridItem(spacing: 10), count: 3), spacing: 10) {
-                ForEach(HelpCategory.allCases) { category in
-                    Button {
-                        session.startRequest(category: category, instant: category.supportsInstant)
-                    } label: {
-                        VStack(spacing: 7) {
-                            Image(systemName: category.symbol)
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundStyle(Palette.accent)
-                                .frame(height: 24)
-                            Text(category.shortTitle)
-                                .font(.caption.weight(.semibold))
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.85)
-                            Text(category.rateLabel)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "What needs doing?", detail: "Swipe for more")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(HelpCategory.allCases) { category in
+                        Button {
+                            session.startRequest(category: category, instant: category.supportsInstant)
+                        } label: {
+                            VStack(spacing: 6) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Palette.accentSoft)
+                                        .frame(width: 56, height: 56)
+                                    Image(systemName: category.symbol)
+                                        .font(.system(size: 22, weight: .semibold))
+                                        .foregroundStyle(Palette.accent)
+                                }
+                                Text(category.shortTitle)
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                            // Fixed width keeps the labels on a shared baseline;
+                            // without it "Seniors" and "Furniture Assembly" sit
+                            // at different heights and the row looks ragged.
+                            .frame(width: 66)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 2)
             }
+            // The rail bleeds to the screen edge so it reads as scrollable, while
+            // the rest of the screen keeps its gutter.
+            .padding(.horizontal, -16)
+            .contentMargins(.horizontal, 16, for: .scrollContent)
+            .scrollClipDisabled()
         }
     }
 
