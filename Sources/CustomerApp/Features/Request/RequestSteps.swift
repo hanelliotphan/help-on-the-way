@@ -4,6 +4,13 @@ import SwiftUI
 
 // MARK: - 1. Category
 
+/// The picker, as a list rather than a grid of cards.
+///
+/// Fourteen tall two-column tiles is a long scroll to choose one thing, and the
+/// tagline and rate were fighting the title for room inside each one. A row puts
+/// them where they read naturally — name and tagline down the left, rate on the
+/// right, badge only where it changes what you can do — and fits roughly three
+/// categories in the height one tile used to take.
 struct CategoryStep: View {
     @Environment(AppSession.self) private var session
     @Bindable var draft: RequestDraft
@@ -14,59 +21,71 @@ struct CategoryStep: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: Array(repeating: GridItem(spacing: 11), count: 2), spacing: 11) {
+            Card(padding: 0, spacing: 0) {
                 ForEach(HelpCategory.allCases) { category in
                     Button {
                         withAnimation(.snappy) { draft.select(category: category, now: session.now) }
                     } label: {
-                        tile(category)
+                        row(category)
                     }
                     .buttonStyle(.plain)
+
+                    if category != HelpCategory.allCases.last {
+                        // Inset to clear the icon, so the divider reads as
+                        // separating rows rather than cutting the list in half.
+                        Divider().padding(.leading, 58)
+                    }
                 }
             }
         }
     }
 
-    private func tile(_ category: HelpCategory) -> some View {
+    private func row(_ category: HelpCategory) -> some View {
         let selected = draft.category == category
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack {
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(selected ? Palette.accent : Palette.accentSoft)
+                    .frame(width: 34, height: 34)
                 Image(systemName: category.symbol)
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(selected ? .white : Palette.accent)
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.white)
-                }
             }
-            Text(category.title)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(selected ? .white : .primary)
-                .multilineTextAlignment(.leading)
-            Text(category.tagline)
-                .font(.caption2)
-                .foregroundStyle(selected ? .white.opacity(0.85) : .secondary)
-                .multilineTextAlignment(.leading)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 5) {
-                Text(category.rateLabel)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(selected ? .white : Palette.accent)
-                if category.trustTier == .enhanced {
-                    Chip(text: "Vetted", symbol: "checkmark.shield.fill", tint: selected ? .white : Palette.success)
-                } else if !category.supportsInstant {
-                    Chip(text: "Scheduled only", tint: selected ? .white : Palette.planned)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(category.title)
+                        .font(.subheadline.weight(selected ? .bold : .medium))
+                        .foregroundStyle(.primary)
+                    // Only the badges that change what you can do with the
+                    // category earn a place on the row.
+                    if category.trustTier == .enhanced {
+                        Chip(text: "Vetted", symbol: "checkmark.shield.fill", tint: Palette.success)
+                    } else if !category.supportsInstant {
+                        Chip(text: "Scheduled", tint: Palette.planned)
+                    }
                 }
+                Text(category.tagline)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+
+            Spacer(minLength: 8)
+
+            Text(category.rateLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(selected ? Palette.accent : .secondary)
+                .lineLimit(1)
+
+            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                .font(.subheadline)
+                .foregroundStyle(selected ? Palette.accent : Color.secondary.opacity(0.3))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(
-            selected ? Palette.accent : Palette.card,
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(selected ? Palette.accentSoft : Color.clear)
+        .contentShape(Rectangle())
     }
 }
 
