@@ -125,6 +125,20 @@ struct HomeView: View {
                     tint: Palette.planned
                 ) { session.startRequest(instant: false) }
             }
+            // Makes the pair equal height. "Someone comes straight over" wraps
+            // to two lines at this width and "Pick a time and a person" doesn't,
+            // so the instant card was exactly one caption line taller — and the
+            // HStack's default centre alignment then inset the shorter one top
+            // *and* bottom, which read as a deliberate size difference.
+            //
+            // This has to be here rather than on the cards alone: inside a
+            // ScrollView the height proposal is nil, so `maxHeight: .infinity`
+            // resolves to each card's own ideal and nothing equalises. Fixing
+            // the HStack vertically makes it take the taller card's height and
+            // propose *that* down. Horizontal stays free so the text still
+            // wraps to the real width instead of measuring itself unbounded.
+            .fixedSize(horizontal: false, vertical: true)
+
             demandStrip
         }
     }
@@ -149,7 +163,10 @@ struct HomeView: View {
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Fills the height the HStack hands down, so the shorter card's
+            // spare room lands at the bottom rather than around the content.
+            // Before the padding, so the background stretches with it.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(14)
             .background(Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
