@@ -171,6 +171,10 @@ struct ProfileView: View {
                 Text("Help on the Way runs entirely on-device against a mock dispatcher. No card is ever collected and no data leaves the phone.")
             }
         }
+        // A trailing section *footer* gets almost nothing below it once the
+        // list's own tab-bar inset is spent, so this one ended ~9pt from the
+        // floating bar and read as touching it. The other tabs sit ~30pt clear.
+        .contentMargins(.bottom, 22, for: .scrollContent)
         .navigationTitle("Account")
     }
 }

@@ -34,6 +34,10 @@ struct HomeView: View {
         }
         .background(Palette.canvas)
         .navigationTitle(greeting)
+        // Inline, not large. A large title spends ~90pt of every visit on a
+        // word that never changes within the hour, and pushes the live-job
+        // banner — the one thing you open this screen to check — off the fold.
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 addressMenu
@@ -165,11 +169,19 @@ struct HomeView: View {
             Text(demand.blurb)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
-            Spacer()
-            Text(address.oneLine)
+                .lineLimit(1)
+                // The demand notice is the point of this strip, so it gets its
+                // full width first and the street absorbs any shortfall.
+                .layoutPriority(1)
+            Spacer(minLength: 8)
+            // Street only. "street, city" never fit beside the surge line, so
+            // the blurb wrapped to two lines *and* the address still truncated
+            // mid-word. The city is already implied by everything around it.
+            Text(address.street)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
+                .truncationMode(.tail)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
